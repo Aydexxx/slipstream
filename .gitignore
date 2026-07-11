@@ -1,0 +1,17 @@
+# Build output
+build/bin/
+frontend/dist/
+node_modules/
+
+# Secrets (AmneziaWG config, env — Faz 4+)
+.env
+.env.*
+*.conf
+configs/
+
+# Claude Code / editor / OS
+.claude/
+CLAUDE.md
+.vscode/
+.DS_Store
+Thumbs.db
