@@ -1,13 +1,20 @@
 {
-  "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "slipstream",
-  "outputfilename": "slipstream",
-  "frontend:install": "npm install",
-  "frontend:build": "npm run build",
-  "frontend:dev:watcher": "npm run dev",
-  "frontend:dev:serverUrl": "auto",
-  "author": {
-    "name": "Aydexxx",
-    "email": "bunyaminaydeniz0@gmail.com"
-  }
+    "$schema":  "https://wails.io/schemas/config.v2.json",
+    "name":  "slipstream",
+    "outputfilename":  "slipstream",
+    "frontend:install":  "npm install",
+    "frontend:build":  "npm run build",
+    "frontend:dev:watcher":  "npm run dev",
+    "frontend:dev:serverUrl":  "auto",
+    "author":  {
+                   "name":  "Aydexxx",
+                   "email":  "bunyaminaydeniz0@gmail.com"
+               },
+    "info":  {
+                 "companyName":  "Aydexxx",
+                 "productName":  "Slipstream",
+                 "productVersion":  "0.9.0",
+                 "copyright":  "Copyright © 2026 Aydexxx",
+                 "comments":  "Slipstream anti-censorship client"
+             }
 }

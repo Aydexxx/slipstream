@@ -2,12 +2,20 @@
 build/bin/
 frontend/dist/
 node_modules/
+dist/
 
 # Secrets (AmneziaWG config, env — Faz 4+)
 .env
 .env.*
 *.conf
 configs/
+# Private Mode key material — never commit real keys/PSKs
+*.key
+*_private*
+privatekey
+presharedkey
+# ...but the committed, secret-free client template must stay tracked:
+!docs/private-mode/client.conf.template
 
 # Claude Code / editor / OS
 .claude/
