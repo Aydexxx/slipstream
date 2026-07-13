@@ -27,11 +27,8 @@ func TestEnsureExtractedThenVerifyPasses(t *testing.T) {
 	if err := m.Verify(ModeFast); err != nil {
 		t.Errorf("Verify(ModeFast) error = %v, want nil", err)
 	}
-	if err := m.Verify(ModePrivate); err != nil {
-		t.Errorf("Verify(ModePrivate) error = %v, want nil", err)
-	}
 
-	for _, p := range []string{m.WinwsPath(), m.WinDivertSysPath(), m.WinDivertDLLPath(), m.CygwinDLLPath(), m.AmneziaWGPath(), m.WintunDLLPath()} {
+	for _, p := range []string{m.WinwsPath(), m.WinDivertSysPath(), m.WinDivertDLLPath(), m.CygwinDLLPath()} {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("expected extracted file at %s: %v", p, err)
 		}
@@ -67,11 +64,6 @@ func TestTamperingIsDetectedAndBlocksMode(t *testing.T) {
 		t.Fatal("Verify(ModeFast) after tampering winws.exe: got nil error, want non-nil (mode should be blocked)")
 	}
 
-	// The other mode's files are untouched and must still verify fine.
-	if err := m.Verify(ModePrivate); err != nil {
-		t.Errorf("Verify(ModePrivate) error = %v, want nil (unaffected by ModeFast tampering)", err)
-	}
-
 	// A fresh EnsureExtracted should detect the mismatch and heal it.
 	if err := m.EnsureExtracted(); err != nil {
 		t.Fatalf("EnsureExtracted() (heal) error = %v", err)
@@ -87,19 +79,19 @@ func TestVerifyFailsOnDeletedFile(t *testing.T) {
 	if err := m.EnsureExtracted(); err != nil {
 		t.Fatalf("EnsureExtracted() error = %v", err)
 	}
-	if err := os.Remove(m.WintunDLLPath()); err != nil {
-		t.Fatalf("Remove(%s) error = %v", m.WintunDLLPath(), err)
+	if err := os.Remove(m.CygwinDLLPath()); err != nil {
+		t.Fatalf("Remove(%s) error = %v", m.CygwinDLLPath(), err)
 	}
 
-	if err := m.Verify(ModePrivate); err == nil {
-		t.Fatal("Verify(ModePrivate) after deleting wintun.dll: got nil error, want non-nil")
+	if err := m.Verify(ModeFast); err == nil {
+		t.Fatal("Verify(ModeFast) after deleting cygwin1.dll: got nil error, want non-nil")
 	}
 
 	if err := m.EnsureExtracted(); err != nil {
 		t.Fatalf("EnsureExtracted() (heal) error = %v", err)
 	}
-	if err := m.Verify(ModePrivate); err != nil {
-		t.Errorf("Verify(ModePrivate) after healing error = %v, want nil", err)
+	if err := m.Verify(ModeFast); err != nil {
+		t.Errorf("Verify(ModeFast) after healing error = %v, want nil", err)
 	}
 }
 

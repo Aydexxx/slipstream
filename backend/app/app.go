@@ -15,7 +15,6 @@ import (
 	"slipstream/backend/elevate"
 	"slipstream/backend/engine"
 	"slipstream/backend/fastmode"
-	"slipstream/backend/privatemode"
 	"slipstream/backend/statemachine"
 	"slipstream/backend/version"
 )
@@ -80,7 +79,7 @@ func (a *App) Startup(ctx context.Context) {
 	// Push the unified state to the frontend as it changes, and to the tray
 	// (once SetTrayUpdater has been called — nil until then). This is the
 	// single event the frontend needs: state, sub-mode, connection health,
-	// kill-switch status, and human-readable errors all live on one Status.
+	// and human-readable errors all live on one Status.
 	a.sm.SetEmitter(func(s statemachine.Status) {
 		wailsruntime.EventsEmit(ctx, "state:status", s)
 		a.trayMu.Lock()
@@ -98,13 +97,12 @@ func (a *App) Startup(ctx context.Context) {
 	a.ready <- ctx
 }
 
-// Shutdown is called by Wails when the app is closing. It tears down
-// whichever mode is active — restoring DNS, routing, and WFP state — via the
-// state machine, which is itself backed by each controller's own
-// unconditional Shutdown backstop. See main.go for the crash-safe
-// RecoverPendingDNS / killswitch.Reconcile / RecoverLeftoverTunnel path run
-// at the next launch in case this one doesn't get to run, and the Windows
-// session-end (logoff/shutdown) backstop.
+// Shutdown is called by Wails when the app is closing. It tears down Fast
+// Mode if active — restoring DNS — via the state machine, which is itself
+// backed by the controller's own unconditional Shutdown backstop. See main.go
+// for the crash-safe RecoverPendingDNS path run at the next launch in case
+// this one doesn't get to run, and the Windows session-end
+// (logoff/shutdown) backstop.
 func (a *App) Shutdown(ctx context.Context) {
 	a.sm.Shutdown()
 }
@@ -130,49 +128,26 @@ func (a *App) VerifyFastModeEngine() error {
 	return a.engine.Verify(engine.ModeFast)
 }
 
-// VerifyPrivateModeEngine checks the extracted AmneziaWG/wintun files
-// against the hardcoded hash manifest. A non-nil error means Private Mode
-// must not run.
-func (a *App) VerifyPrivateModeEngine() error {
-	return a.engine.Verify(engine.ModePrivate)
-}
-
 // --- unified state machine bindings ---
 
 // RequestFastMode switches to Fast Mode. mode ("full"/"discord"/"custom") is
 // the target — what to unblock; strategyID names the DPI-bypass strategy — how
 // to unblock it (see fastmode/strategies.go; "" resolves to the default).
 // domains is only used for "custom" (the resolved list of hosts to unblock).
-// If Private Mode is active, it is fully torn down and verified clean first.
 func (a *App) RequestFastMode(mode string, strategyID string, domains []string) error {
 	return a.sm.RequestFastMode(fastmode.Mode(mode), strategyID, domains)
 }
 
-// RequestPrivateMode switches to Private Mode. If Fast Mode is active, it is
-// fully torn down and verified clean first.
-func (a *App) RequestPrivateMode() error {
-	return a.sm.RequestPrivateMode()
-}
-
-// RequestIdle tears down whichever mode is active and verifies clean
-// DNS/WFP state.
+// RequestIdle tears down Fast Mode if active and verifies clean DNS state.
 func (a *App) RequestIdle() error {
 	return a.sm.RequestIdle()
 }
 
 // State returns a snapshot of the unified state: coarse state, active
-// sub-mode, connection health, kill-switch status, and any human-readable
-// error — the single source of truth for the frontend.
+// sub-mode, connection health, and any human-readable error — the single
+// source of truth for the frontend.
 func (a *App) State() statemachine.Status {
 	return a.sm.Status()
-}
-
-// DisarmKillSwitch is the manual "restore internet" control: it removes the
-// leak-protection filters immediately without tearing down the tunnel. Use
-// it to recover connectivity if a dropped tunnel has left the machine failed
-// closed.
-func (a *App) DisarmKillSwitch() error {
-	return a.sm.DisarmKillSwitch()
 }
 
 // SetReconnectOnLaunch toggles whether Slipstream should resume the last
@@ -204,36 +179,6 @@ func (a *App) SaveCustomDomains(domains []string) error {
 	return a.sm.Fast().SaveCustomDomains(domains)
 }
 
-// --- Private Mode config bindings ---
-
-// ImportPrivateConfig validates and stores (DPAPI-encrypted) the user's
-// AmneziaWG config, returning a key-free summary of it.
-func (a *App) ImportPrivateConfig(raw string) (privatemode.Summary, error) {
-	return a.sm.Private().ImportConfig(raw)
-}
-
-// HasPrivateConfig reports whether an AmneziaWG config has been imported.
-func (a *App) HasPrivateConfig() bool {
-	return a.sm.Private().HasConfig()
-}
-
-// PrivateConfigSummary returns the key-free summary of the imported config.
-func (a *App) PrivateConfigSummary() (privatemode.Summary, error) {
-	return a.sm.Private().ConfigSummary()
-}
-
-// DeletePrivateConfig removes the stored AmneziaWG config (must be disconnected).
-func (a *App) DeletePrivateConfig() error {
-	return a.sm.Private().DeleteConfig()
-}
-
-// GetExternalIP reports the address Private Mode's traffic currently appears
-// to come from. It only succeeds while genuinely connected with the kill
-// switch armed and a fresh handshake — see privatemode.Controller.ExternalIP.
-func (a *App) GetExternalIP() (string, error) {
-	return a.sm.Private().ExternalIP(a.ctx)
-}
-
 // --- misc bindings ---
 
 // OpenLogsFolder opens the directory containing Slipstream's rotating log
@@ -248,12 +193,12 @@ func (a *App) GetAutoStartEnabled() (bool, error) {
 	return autostart.IsEnabled(a.appName)
 }
 
-// ResetAndQuit tears the active mode down and then runs a full network/system
-// state restore (DNS, DoH template, WFP kill switch, tunnel + WinDivert
-// services, orphaned processes, leftover plaintext key) before quitting. It
-// deletes no user files — it's the "put my networking back exactly as it was,
-// then close" control. Bound to the frontend and reused as the tray's Reset &
-// Quit action (main.go passes this method as the tray callback).
+// ResetAndQuit tears Fast Mode down and then runs a full network/system
+// state restore (DNS, DoH template, WinDivert driver service, orphaned
+// processes) before quitting. It deletes no user files — it's the "put my
+// networking back exactly as it was, then close" control. Bound to the
+// frontend and reused as the tray's Reset & Quit action (main.go passes this
+// method as the tray callback).
 func (a *App) ResetAndQuit() {
 	a.sm.Shutdown()
 	results := cleanup.RestoreNetworkState(cleanup.DefaultDeps(a.appName, a.exePath, a.log))

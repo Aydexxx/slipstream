@@ -5,14 +5,12 @@ import {useNotificationSetting} from './useNotificationSetting'
 
 interface EdgeState {
     error: boolean
-    blocked: boolean
 }
 
 /**
- * Fires OS-native notifications for the moments that matter (tunnel
- * dropped/errored, kill switch engaged while not actually connected) by
- * watching the same status the rest of the UI already trusts. Works even
- * while the window is hidden in the tray — HideWindowOnClose keeps this
+ * Fires OS-native notifications for the moments that matter (Fast Mode errored
+ * out) by watching the same status the rest of the UI already trusts. Works
+ * even while the window is hidden in the tray — HideWindowOnClose keeps this
  * component's effects running, it just isn't rendered.
  */
 export function useTrayNotifications() {
@@ -45,7 +43,6 @@ export function useTrayNotifications() {
         if (!status) return
 
         const isError = status.state === 'error'
-        const isBlocked = status.killSwitchArmed === true && status.state !== 'private-active' && !isError
 
         const prev = prevRef.current
         if (enabledRef.current && readyRef.current && prev) {
@@ -55,15 +52,9 @@ export function useTrayNotifications() {
                     title: 'Slipstream',
                     body: status.error || 'Something went wrong.',
                 }).catch(() => {})
-            } else if (isBlocked && !prev.blocked) {
-                SendNotification({
-                    id: 'slipstream-kill-switch',
-                    title: 'Slipstream',
-                    body: 'Kill switch engaged — traffic is blocked until the tunnel reconnects.',
-                }).catch(() => {})
             }
         }
 
-        prevRef.current = {error: isError, blocked: isBlocked}
+        prevRef.current = {error: isError}
     }, [status])
 }

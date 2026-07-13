@@ -1,13 +1,10 @@
 import {useEffect, useState} from 'react'
 import {GetCustomDomains} from '../../../wailsjs/go/app/App'
-import {usePrivateConfig} from '../../hooks/usePrivateConfig'
 import {useStrategies} from '../../hooks/useStrategies'
 import {normalizeError} from '../../lib/errors'
-import type {ModeTab} from '../../lib/types'
 import type {FastMode} from '../../state/AppStateContext'
 import {useAppState} from '../../state/useAppState'
 import {FastControls} from '../fast/FastControls'
-import {PrivateControls} from '../private/PrivateControls'
 import {StatusHub} from '../status/StatusHub'
 import {Button} from '../ui/Button'
 import {Card} from '../ui/Card'
@@ -22,14 +19,13 @@ interface PrimaryAction {
 
 /**
  * The main connection screen: the status hub (ground truth), one primary
- * action whose meaning follows both the selected tab and the live state, and
- * the selected mode's configuration. It issues requests but never predicts
- * their outcome — the hub only ever moves when a real status event lands.
+ * action whose meaning follows the live state, and the Fast Mode
+ * configuration. It issues requests but never predicts their outcome — the hub
+ * only ever moves when a real status event lands.
  */
-export function ConnectionScreen({tab, onOpenSettings}: {tab: ModeTab; onOpenSettings: () => void}) {
-    const {status, action, requestFastMode, requestPrivateMode, requestIdle} = useAppState()
+export function ConnectionScreen() {
+    const {status, action, requestFastMode, requestIdle} = useAppState()
     const toast = useToast()
-    const {hasConfig, summary} = usePrivateConfig()
     const {defaultId} = useStrategies()
 
     const [fastSubmode, setFastSubmode] = useState<FastMode>('full')
@@ -45,7 +41,6 @@ export function ConnectionScreen({tab, onOpenSettings}: {tab: ModeTab; onOpenSet
     }, [status?.lastFastStrategy, defaultId, fastStrategy])
 
     const fastActive = status?.subMode === 'fast'
-    const privateActive = status?.subMode === 'private'
     const busy = starting || action.pending || status?.transitioning === true
 
     async function startFast() {
@@ -62,16 +57,9 @@ export function ConnectionScreen({tab, onOpenSettings}: {tab: ModeTab; onOpenSet
         }
     }
 
-    const primary: PrimaryAction =
-        tab === 'fast'
-            ? fastActive
-                ? {label: 'Turn Off', variant: 'secondary', onClick: () => void requestIdle()}
-                : {label: 'Turn On', variant: 'primary', onClick: () => void startFast()}
-            : privateActive
-              ? {label: 'Disconnect', variant: 'secondary', onClick: () => void requestIdle()}
-              : hasConfig
-                ? {label: 'Connect', variant: 'primary', onClick: () => void requestPrivateMode()}
-                : {label: 'Import config', variant: 'primary', onClick: onOpenSettings}
+    const primary: PrimaryAction = fastActive
+        ? {label: 'Turn Off', variant: 'secondary', onClick: () => void requestIdle()}
+        : {label: 'Turn On', variant: 'primary', onClick: () => void startFast()}
 
     return (
         <div className="mx-auto flex w-full max-w-md flex-col items-center gap-8 px-6 pt-8 pb-4">
@@ -91,18 +79,14 @@ export function ConnectionScreen({tab, onOpenSettings}: {tab: ModeTab; onOpenSet
             </Button>
 
             <Card className="w-full animate-slide-up">
-                {tab === 'fast' ? (
-                    <FastControls
-                        submode={fastSubmode}
-                        onSubmodeChange={setFastSubmode}
-                        strategy={fastStrategy}
-                        onStrategyChange={setFastStrategy}
-                        active={fastActive}
-                        fastStatus={status?.fastStatus}
-                    />
-                ) : (
-                    <PrivateControls hasConfig={hasConfig} summary={summary} onOpenSettings={onOpenSettings} />
-                )}
+                <FastControls
+                    submode={fastSubmode}
+                    onSubmodeChange={setFastSubmode}
+                    strategy={fastStrategy}
+                    onStrategyChange={setFastStrategy}
+                    active={fastActive}
+                    fastStatus={status?.fastStatus}
+                />
             </Card>
         </div>
     )

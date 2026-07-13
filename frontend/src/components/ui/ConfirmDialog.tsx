@@ -16,8 +16,8 @@ interface ConfirmDialogProps {
 }
 
 /**
- * The single confirmation surface for destructive or leak-affecting actions
- * (disarming the kill switch, uninstalling). Consistent, focus-trapped, and
+ * The single confirmation surface for destructive actions (uninstalling,
+ * resetting network state). Consistent, focus-trapped, and
  * escape/overlay-dismissible so a stray click can't confirm — every such action
  * routes through here rather than ad-hoc inline confirm rows.
  */

@@ -21,7 +21,6 @@ import (
 	"slipstream/backend/engine"
 	"slipstream/backend/fastmode"
 	"slipstream/backend/logging"
-	"slipstream/backend/privatemode"
 	"slipstream/backend/sessionwatch"
 	"slipstream/backend/singleinstance"
 	"slipstream/backend/statemachine"
@@ -107,7 +106,6 @@ func main() {
 	slipstreamRoot := filepath.Join(os.Getenv("LOCALAPPDATA"), appName)
 	fastDataDir := filepath.Join(slipstreamRoot, "fastmode")
 	fastLogDir := filepath.Join(slipstreamRoot, "logs")
-	privateDataDir := filepath.Join(slipstreamRoot, "private")
 	stateDataDir := filepath.Join(slipstreamRoot, "state")
 
 	fastController, err := fastmode.New(fastmode.Config{
@@ -121,24 +119,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	privateController, err := privatemode.New(privatemode.Options{
-		Log:     logger,
-		Engine:  engineManager,
-		DataDir: privateDataDir,
-	})
-	if err != nil {
-		logger.Error("failed to init private mode controller", "error", err)
-		os.Exit(1)
-	}
-
 	sm, err := statemachine.New(statemachine.Config{
-		Log:            logger,
-		Fast:           fastController,
-		Private:        privateController,
-		StateDataDir:   stateDataDir,
-		FastDataDir:    fastDataDir,
-		PrivateDataDir: privateDataDir,
-		AmneziaWGPath:  engineManager.AmneziaWGPath(),
+		Log:          logger,
+		Fast:         fastController,
+		StateDataDir: stateDataDir,
+		FastDataDir:  fastDataDir,
 	})
 	if err != nil {
 		logger.Error("failed to init state machine", "error", err)
@@ -146,10 +131,8 @@ func main() {
 	}
 
 	// Crash-safe backstop, run before the UI comes up: detect and clean any
-	// leftover state from a previous run that crashed or was hard-killed —
-	// an orphaned winws.exe, a pending DNS restore, leftover WFP kill-switch
-	// filters (restored first, since that's what gets the user back online),
-	// and a leftover AmneziaWG tunnel service.
+	// leftover Fast Mode state from a previous run that crashed or was
+	// hard-killed — an orphaned winws.exe and a pending DNS restore.
 	sm.Reconcile()
 
 	// Catches Windows logging off or shutting down while a mode is active,
@@ -162,10 +145,10 @@ func main() {
 		defer stopSessionWatch()
 	}
 
-	// Final safety net: whatever happens below, tear down whichever mode is
-	// active (restore DNS + routing + WFP) on the way out. Shutdown is
-	// idempotent, so this is harmless even after Wails' own OnShutdown (or
-	// the session-end watcher above) already ran it.
+	// Final safety net: whatever happens below, tear down Fast Mode if active
+	// (restore DNS) on the way out. Shutdown is idempotent, so this is
+	// harmless even after Wails' own OnShutdown (or the session-end watcher
+	// above) already ran it.
 	defer sm.Shutdown()
 
 	application := app.New(logger, engineManager, sm, logging.LogDir(appName), appName, exePath)

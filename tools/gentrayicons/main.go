@@ -25,10 +25,9 @@ type iconSpec struct {
 }
 
 var icons = []iconSpec{
-	{"off", "71717A"},     // neutral gray
-	{"fast", "22C55E"},    // success green
-	{"private", "8B7CF6"}, // accent violet
-	{"alert", "EF4444"},   // danger red
+	{"off", "71717A"},   // neutral gray
+	{"fast", "22C55E"},  // success green
+	{"alert", "EF4444"}, // danger red
 }
 
 func main() {

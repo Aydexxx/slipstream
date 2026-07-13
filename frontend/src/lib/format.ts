@@ -1,5 +1,5 @@
 // Go's zero time.Time{} serializes to this RFC3339 string — treat it as
-// "not set" everywhere a `since`/`lastHandshake` field might carry it.
+// "not set" everywhere a `since` field might carry it.
 const ZERO_TIME_PREFIX = '0001-01-01';
 
 export function isZeroTime(iso: string | null | undefined): boolean {

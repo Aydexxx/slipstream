@@ -23,8 +23,6 @@ import (
 
 	"slipstream/backend/autostart"
 	"slipstream/backend/fastmode"
-	"slipstream/backend/killswitch"
-	"slipstream/backend/privatemode"
 )
 
 // Deps carries the paths and identifiers the cleanup steps need. Build it with
@@ -34,8 +32,6 @@ type Deps struct {
 	AppName        string // "Slipstream"
 	RootDir        string // %LocalAppData%\Slipstream
 	FastDataDir    string // RootDir\fastmode
-	PrivateDataDir string // RootDir\private
-	AmneziaWGPath  string // RootDir\engine\private\amneziawg.exe
 	InstallExePath string // the installed exe, for removing its install dir (may be "")
 }
 
@@ -47,8 +43,6 @@ func DefaultDeps(appName, installExePath string, log *slog.Logger) Deps {
 		AppName:        appName,
 		RootDir:        root,
 		FastDataDir:    filepath.Join(root, "fastmode"),
-		PrivateDataDir: filepath.Join(root, "private"),
-		AmneziaWGPath:  filepath.Join(root, "engine", "private", "amneziawg.exe"),
 		InstallExePath: installExePath,
 	}
 }
@@ -76,26 +70,17 @@ func (r *stepRunner) do(name string, fn func() error) {
 }
 
 // RestoreNetworkState reverses every network/system-state change (DNS, DoH,
-// WFP kill switch, tunnel service, WinDivert driver service, orphaned
-// processes, leftover plaintext key). It deletes no user files. This is what
-// "Reset & Quit" runs, and it is a superset of the startup Reconcile. The
-// order restores connectivity first (kill switch / DNS) before touching the
-// slower service/driver removals.
+// WinDivert driver service, orphaned processes). It deletes no user files.
+// This is what "Reset & Quit" runs, and it is a superset of the startup
+// Reconcile. The order restores connectivity first (DNS) before touching the
+// slower driver removal.
 func RestoreNetworkState(d Deps) []StepResult {
 	r := &stepRunner{log: d.Log}
 
 	r.do("kill orphaned winws.exe", func() error { return fastmode.KillOrphanedProcesses(d.Log) })
 	r.do("restore DNS", func() error { return fastmode.RecoverPendingDNS(d.FastDataDir, d.Log) })
 	r.do("remove global DoH template", func() error { fastmode.RemoveGlobalDoHTemplate(d.Log); return nil })
-	r.do("remove kill-switch WFP filters", func() error {
-		return killswitch.Reconcile(filepath.Join(d.PrivateDataDir, "killswitch.marker"), d.Log)
-	})
-	r.do("remove AmneziaWG tunnel service", func() error { return privatemode.RecoverLeftoverTunnel(d.AmneziaWGPath, d.Log) })
 	r.do("remove WinDivert driver service", func() error { return fastmode.RemoveWinDivertService(d.Log) })
-	r.do("shred leftover plaintext config", func() error {
-		privatemode.ShredLeftoverPlaintextConfig(d.PrivateDataDir, d.Log)
-		return nil
-	})
 
 	return r.results
 }

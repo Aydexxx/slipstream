@@ -52,8 +52,7 @@ foreach ($t in $targets) {
 }
 
 # Cloudflare's own public speed-test download endpoint (speed.cloudflare.com)
-# - the same trust boundary this app already uses for DoH and the external-IP
-# trace endpoint (backend/fastmode/dns.go, backend/privatemode/externalip.go).
+# - the same trust boundary this app already uses for DoH (backend/fastmode/dns.go).
 Section "Download throughput ($([math]::Round($DownloadBytes/1MB, 1)) MB sample)" {
     $url = "https://speed.cloudflare.com/__down?bytes=$DownloadBytes"
     $sw = [System.Diagnostics.Stopwatch]::StartNew()

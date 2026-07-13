@@ -7,38 +7,30 @@ import (
 	"time"
 
 	"slipstream/backend/fastmode"
-	"slipstream/backend/privatemode"
 )
 
 // Config wires a Manager to its dependencies.
 type Config struct {
-	Log     *slog.Logger
-	Fast    FastController
-	Private PrivateController
+	Log  *slog.Logger
+	Fast FastController
 
 	// StateDataDir is where settings.json (persisted last-mode/reconnect
 	// preference) lives, e.g. %LocalAppData%\Slipstream\state.
 	StateDataDir string
-	// FastDataDir / PrivateDataDir / AmneziaWGPath are only needed by
-	// Reconcile, which calls the existing package-level recovery functions.
-	FastDataDir    string
-	PrivateDataDir string
-	AmneziaWGPath  string
+	// FastDataDir is only needed by Reconcile, which calls the existing
+	// package-level recovery functions.
+	FastDataDir string
 }
 
-// Manager is the single owner of cross-mode state. All exported methods are
-// safe for concurrent use. All mode changes — Fast Mode, Private Mode, or
-// back to Idle — go through it, never through the underlying controllers
-// directly, so mutual exclusion can't be bypassed.
+// Manager is the single owner of top-level state. All exported methods are
+// safe for concurrent use. All mode changes — Fast Mode or back to Idle — go
+// through it, never through the underlying controller directly.
 type Manager struct {
-	log     *slog.Logger
-	fast    FastController
-	private PrivateController
+	log  *slog.Logger
+	fast FastController
 
-	stateDataDir   string
-	fastDataDir    string
-	privateDataDir string
-	amneziaWGPath  string
+	stateDataDir string
+	fastDataDir  string
 
 	emit   Emitter
 	emitMu sync.RWMutex
@@ -51,16 +43,15 @@ type Manager struct {
 	since         time.Time
 	settings      Settings
 	lastFast      fastmode.Status
-	lastPrivate   privatemode.Status
 
 	shutdownOnce sync.Once
 }
 
 // New constructs a Manager, loads any persisted settings, and wires itself
-// as the sole listener of both controllers' status callbacks.
+// as the sole listener of the Fast controller's status callback.
 func New(cfg Config) (*Manager, error) {
-	if cfg.Fast == nil || cfg.Private == nil {
-		return nil, fmt.Errorf("statemachine: both controllers are required")
+	if cfg.Fast == nil {
+		return nil, fmt.Errorf("statemachine: fast controller is required")
 	}
 	if cfg.StateDataDir == "" {
 		return nil, fmt.Errorf("statemachine: state data directory is required")
@@ -70,20 +61,15 @@ func New(cfg Config) (*Manager, error) {
 		return nil, err
 	}
 	m := &Manager{
-		log:            cfg.Log,
-		fast:           cfg.Fast,
-		private:        cfg.Private,
-		stateDataDir:   cfg.StateDataDir,
-		fastDataDir:    cfg.FastDataDir,
-		privateDataDir: cfg.PrivateDataDir,
-		amneziaWGPath:  cfg.AmneziaWGPath,
-		state:          StateIdle,
-		settings:       settings,
-		lastFast:       cfg.Fast.Status(),
-		lastPrivate:    cfg.Private.Status(),
+		log:          cfg.Log,
+		fast:         cfg.Fast,
+		stateDataDir: cfg.StateDataDir,
+		fastDataDir:  cfg.FastDataDir,
+		state:        StateIdle,
+		settings:     settings,
+		lastFast:     cfg.Fast.Status(),
 	}
 	cfg.Fast.SetEmitter(m.onFastStatus)
-	cfg.Private.SetEmitter(m.onPrivateStatus)
 	return m, nil
 }
 
@@ -98,10 +84,6 @@ func (m *Manager) SetEmitter(e Emitter) {
 // operations (domain lists, presets) that aren't mode transitions and so
 // don't need to go through the state machine.
 func (m *Manager) Fast() FastController { return m.fast }
-
-// Private exposes the underlying Private Mode controller for config-only
-// operations (import/summary/delete) that aren't mode transitions.
-func (m *Manager) Private() PrivateController { return m.private }
 
 // LastFastSelection returns the Fast Mode sub-mode/strategy/domains last used
 // successfully — the same values MaybeReconnectLastMode resumes with.
@@ -130,17 +112,14 @@ func (m *Manager) Status() Status {
 
 func (m *Manager) snapshotLocked() Status {
 	fs := m.lastFast
-	ps := m.lastPrivate
 	return Status{
 		State:             m.state,
 		SubMode:           m.subMode,
 		Transitioning:     m.transitioning,
-		Healthy:           m.state == StateFastActive || m.state == StatePrivateActive,
+		Healthy:           m.state == StateFastActive,
 		Error:             m.lastErr,
 		Since:             m.since,
 		FastStatus:        &fs,
-		PrivateStatus:     &ps,
-		KillSwitchArmed:   m.private.KillSwitchArmed(),
 		ReconnectOnLaunch: m.settings.ReconnectOnLaunch,
 		LastFastStrategy:  m.settings.LastFastStrategy,
 	}
@@ -160,7 +139,7 @@ func (m *Manager) emitStatus() {
 
 // beginTransition claims the top-level transition lock so concurrent
 // Request* calls can't race each other. It mirrors the transitioning guard
-// each underlying controller already has, one level up. It emits the new
+// the Fast controller already has, one level up. It emits the new
 // transitioning=true status so the UI can show a pending state for the whole
 // round-trip (not just the local action call).
 func (m *Manager) beginTransition() error {
@@ -202,19 +181,13 @@ func (m *Manager) fail(err error) {
 
 // RequestFastMode switches to Fast Mode using the named desync strategy (the
 // "how"; see fastmode/strategies.go) against the given target sub-mode (the
-// "what"). It first fully tears down and verifies Private Mode if it was
-// active. strategyID may be "" or unknown — Fast Mode resolves it to the
+// "what"). strategyID may be "" or unknown — Fast Mode resolves it to the
 // default.
 func (m *Manager) RequestFastMode(mode fastmode.Mode, strategyID string, domains []string) error {
 	if err := m.beginTransition(); err != nil {
 		return err
 	}
 	defer m.endTransition()
-
-	if err := m.teardownOtherMode(SubModeFast); err != nil {
-		m.fail(err)
-		return err
-	}
 
 	// Claim the sub-mode before starting so onFastStatus attributes the
 	// status callbacks Start() fires internally (Starting, then
@@ -251,44 +224,7 @@ func (m *Manager) RequestFastMode(mode fastmode.Mode, strategyID string, domains
 	return nil
 }
 
-// RequestPrivateMode switches to Private Mode, first fully tearing down and
-// verifying Fast Mode if it was active.
-func (m *Manager) RequestPrivateMode() error {
-	if err := m.beginTransition(); err != nil {
-		return err
-	}
-	defer m.endTransition()
-
-	if err := m.teardownOtherMode(SubModePrivate); err != nil {
-		m.fail(err)
-		return err
-	}
-
-	// Claim the sub-mode before connecting so onPrivateStatus attributes the
-	// status callbacks Connect() fires internally to Private Mode instead of
-	// dropping them while subMode is still stale.
-	m.mu.Lock()
-	m.subMode = SubModePrivate
-	m.state = StatePrivateConnecting
-	m.mu.Unlock()
-
-	if err := m.private.Connect(); err != nil {
-		m.fail(err)
-		return err
-	}
-
-	m.mu.Lock()
-	m.lastErr = ""
-	m.since = time.Now()
-	m.settings.LastMode = SubModePrivate
-	settingsToSave := m.settings
-	m.mu.Unlock()
-	m.persistSettings(settingsToSave)
-	m.emitStatus()
-	return nil
-}
-
-// RequestIdle tears down whichever mode is active and verifies clean state.
+// RequestIdle tears down Fast Mode if active and verifies clean DNS state.
 func (m *Manager) RequestIdle() error {
 	if m.log != nil {
 		m.log.Info("request idle (stop) received")
@@ -298,7 +234,7 @@ func (m *Manager) RequestIdle() error {
 	}
 	defer m.endTransition()
 
-	if err := m.teardownOtherMode(SubModeNone); err != nil {
+	if err := m.teardownActiveMode(); err != nil {
 		m.fail(err)
 		return err
 	}
@@ -316,66 +252,32 @@ func (m *Manager) RequestIdle() error {
 	return nil
 }
 
-// displayName renders a SubMode as the same Title Case name used throughout
-// the rest of the app's user-facing copy ("Fast Mode"/"Private Mode"),
-// rather than its raw lowercase string value.
-func displayName(s SubMode) string {
-	switch s {
-	case SubModeFast:
-		return "Fast Mode"
-	case SubModePrivate:
-		return "Private Mode"
-	default:
-		return "the active mode"
-	}
-}
-
-// teardownOtherMode fully stops whichever mode is active and isn't target,
-// then verifies the teardown actually left clean DNS/WFP state. Call sites
-// must hold the transition lock (via beginTransition).
-func (m *Manager) teardownOtherMode(target SubMode) error {
+// teardownActiveMode fully stops Fast Mode if it is active, then verifies the
+// teardown actually left clean DNS state. Call sites must hold the transition
+// lock (via beginTransition).
+func (m *Manager) teardownActiveMode() error {
 	m.mu.Lock()
 	current := m.subMode
 	m.mu.Unlock()
 
-	if current == SubModeNone || current == target {
+	if current != SubModeFast {
 		return nil
 	}
 
-	var err error
-	switch current {
-	case SubModeFast:
-		err = m.fast.Stop()
-	case SubModePrivate:
-		err = m.private.Disconnect()
-	}
-	if err != nil {
-		return fmt.Errorf("tear down %s: %w", displayName(current), err)
+	if err := m.fast.Stop(); err != nil {
+		return fmt.Errorf("tear down Fast Mode: %w", err)
 	}
 	return m.verifyClean()
 }
 
-// verifyClean checks live signals — not just the post-hoc state fields,
-// which both controllers reset unconditionally even on a partially failed
-// teardown — that the previous mode genuinely left no DNS override or WFP
-// block behind before the next mode is allowed to start.
+// verifyClean checks a live signal — not just the post-hoc state fields,
+// which the controller resets unconditionally even on a partially failed
+// teardown — that Fast Mode genuinely left no DNS override behind before
+// reporting Idle.
 func (m *Manager) verifyClean() error {
 	if m.fast.DNSBackupPending() {
 		return fmt.Errorf("Fast Mode teardown incomplete: DNS override still pending restore")
 	}
-	if m.private.KillSwitchArmed() {
-		return fmt.Errorf("Private Mode teardown incomplete: kill switch still armed")
-	}
-	return nil
-}
-
-// DisarmKillSwitch removes WFP leak-protection filters without tearing down
-// the tunnel. Manual "restore internet" control.
-func (m *Manager) DisarmKillSwitch() error {
-	if err := m.private.DisarmKillSwitch(); err != nil {
-		return err
-	}
-	m.emitStatus()
 	return nil
 }
 
@@ -423,34 +325,8 @@ func (m *Manager) onFastStatus(s fastmode.Status) {
 	m.emitStatus()
 }
 
-// onPrivateStatus is Private Mode's status callback. Same "only drive
-// top-level state while active" rule as onFastStatus — this is what lets an
-// async handshake drop (StateNoHandshake, reached via the monitor
-// goroutine's giveUp(), not through a Request* call) correctly flip the
-// top-level state to Error outside of any Request* call.
-func (m *Manager) onPrivateStatus(s privatemode.Status) {
-	m.mu.Lock()
-	m.lastPrivate = s
-	if m.subMode == SubModePrivate {
-		switch s.State {
-		case privatemode.StateConnecting:
-			m.state = StatePrivateConnecting
-		case privatemode.StateConnected:
-			m.state = StatePrivateActive
-		case privatemode.StateNoHandshake, privatemode.StateError:
-			m.state = StateError
-			m.lastErr = s.Error
-		case privatemode.StateDisconnected:
-			m.state = StateIdle
-			m.subMode = SubModeNone
-		}
-	}
-	m.mu.Unlock()
-	m.emitStatus()
-}
-
-// Shutdown is the app-exit hook: tear both modes down (each controller's own
-// Shutdown is itself an unconditional DNS/WFP-restore backstop) and persist
+// Shutdown is the app-exit hook: tear Fast Mode down (the controller's own
+// Shutdown is itself an unconditional DNS-restore backstop) and persist
 // settings.
 // Shutdown is safe to call more than once (only the first call does
 // anything) — it now has multiple independent triggers: a normal quit, the
@@ -458,7 +334,6 @@ func (m *Manager) onPrivateStatus(s privatemode.Status) {
 func (m *Manager) Shutdown() {
 	m.shutdownOnce.Do(func() {
 		m.fast.Shutdown()
-		m.private.Shutdown()
 		m.mu.Lock()
 		s := m.settings
 		m.mu.Unlock()

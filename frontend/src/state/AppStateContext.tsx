@@ -1,12 +1,5 @@
 import {createContext, useCallback, useEffect, useRef, useState, type ReactNode} from 'react'
-import {
-    DisarmKillSwitch,
-    RequestFastMode,
-    RequestIdle,
-    RequestPrivateMode,
-    SetReconnectOnLaunch,
-    State,
-} from '../../wailsjs/go/app/App'
+import {RequestFastMode, RequestIdle, SetReconnectOnLaunch, State} from '../../wailsjs/go/app/App'
 import {statemachine} from '../../wailsjs/go/models'
 import {EventsOn} from '../../wailsjs/runtime/runtime'
 import {normalizeError} from '../lib/errors'
@@ -24,9 +17,7 @@ export interface AppStateValue {
     action: ActionState
     clearActionError: () => void
     requestFastMode: (mode: FastMode, strategyId: string, domains: string[]) => Promise<void>
-    requestPrivateMode: () => Promise<void>
     requestIdle: () => Promise<void>
-    disarmKillSwitch: () => Promise<void>
     setReconnectOnLaunch: (enabled: boolean) => Promise<void>
 }
 
@@ -85,9 +76,7 @@ export function AppStateProvider({children}: {children: ReactNode}) {
             runAction(() => RequestFastMode(mode, strategyId, domains)),
         [runAction],
     )
-    const requestPrivateMode = useCallback(() => runAction(() => RequestPrivateMode()), [runAction])
     const requestIdle = useCallback(() => runAction(() => RequestIdle()), [runAction])
-    const disarmKillSwitch = useCallback(() => runAction(() => DisarmKillSwitch()), [runAction])
     const setReconnectOnLaunch = useCallback(
         (enabled: boolean) => runAction(() => SetReconnectOnLaunch(enabled)),
         [runAction],
@@ -100,9 +89,7 @@ export function AppStateProvider({children}: {children: ReactNode}) {
                 action,
                 clearActionError,
                 requestFastMode,
-                requestPrivateMode,
                 requestIdle,
-                disarmKillSwitch,
                 setReconnectOnLaunch,
             }}
         >

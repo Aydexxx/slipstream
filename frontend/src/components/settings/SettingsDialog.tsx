@@ -1,5 +1,5 @@
 import * as RadixDialog from '@radix-ui/react-dialog'
-import {Bell, SlidersHorizontal, Wrench, X, Zap} from 'lucide-react'
+import {Bell, SlidersHorizontal, Wrench, X} from 'lucide-react'
 import {useEffect, useState, type ReactNode} from 'react'
 import {GetVersion} from '../../../wailsjs/go/app/App'
 import {useAutoStart} from '../../hooks/useAutoStart'
@@ -9,15 +9,13 @@ import {useAppState} from '../../state/useAppState'
 import {IconButton} from '../ui/IconButton'
 import {Switch} from '../ui/Switch'
 import {AdvancedSection} from './AdvancedSection'
-import {ImportConfigForm} from './ImportConfigForm'
 import {LogsSection} from './LogsSection'
 import {ThemeToggle} from './ThemeToggle'
 
-export type SettingsTab = 'general' | 'network' | 'notifications' | 'system'
+export type SettingsTab = 'general' | 'notifications' | 'system'
 
 const TABS: {value: SettingsTab; label: string; icon: ReactNode}[] = [
     {value: 'general', label: 'General', icon: <SlidersHorizontal className="size-4" aria-hidden />},
-    {value: 'network', label: 'Network', icon: <Zap className="size-4" aria-hidden />},
     {value: 'notifications', label: 'Notifications', icon: <Bell className="size-4" aria-hidden />},
     {value: 'system', label: 'System', icon: <Wrench className="size-4" aria-hidden />},
 ]
@@ -133,25 +131,12 @@ export function SettingsDialog({
                             </div>
                         )}
 
-                        {tab === 'network' && (
-                            <div className="flex flex-col gap-4">
-                                <div>
-                                    <h3 className="font-display text-base font-semibold text-text">Network</h3>
-                                    <p className="mt-1 text-sm text-text-secondary">
-                                        Import the AmneziaWG config for your VPS. Pick your ISP-tuned bypass strategy on
-                                        the Fast screen.
-                                    </p>
-                                </div>
-                                <ImportConfigForm />
-                            </div>
-                        )}
-
                         {tab === 'notifications' && (
                             <div className="flex flex-col gap-5">
                                 <h3 className="font-display text-base font-semibold text-text">Notifications</h3>
                                 <Row
                                     title="Desktop notifications"
-                                    description="Alert me when the tunnel drops, errors, or the kill switch blocks traffic."
+                                    description="Alert me when Fast Mode runs into an error."
                                 >
                                     <Switch
                                         aria-label="Desktop notifications"

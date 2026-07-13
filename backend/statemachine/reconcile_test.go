@@ -9,16 +9,15 @@ import (
 	"slipstream/backend/fastmode"
 )
 
-// MaybeReconnectLastMode only touches m.settings and the already-fake
-// Fast/Private controllers, so it's fully safe to drive here — unlike
-// Manager.Reconcile(), which calls fastmode.KillOrphanedProcesses,
-// killswitch.Reconcile, and privatemode.RecoverLeftoverTunnel as real
-// package-level functions (real taskkill / real WFP engine open / real
-// service-manager queries), bypassing the fake interfaces entirely. That's a
-// deliberate reuse of the existing recovery functions from when this package
-// was built, not an oversight — but it does mean Reconcile() itself can't be
-// unit-tested without the same live-system risk this test suite avoids
-// everywhere else, so it isn't exercised here.
+// MaybeReconnectLastMode only touches m.settings and the already-fake Fast
+// controller, so it's fully safe to drive here — unlike Manager.Reconcile(),
+// which calls fastmode.KillOrphanedProcesses and fastmode.RecoverPendingDNS as
+// real package-level functions (real taskkill / real netsh queries), bypassing
+// the fake interface entirely. That's a deliberate reuse of the existing
+// recovery functions from when this package was built, not an oversight — but
+// it does mean Reconcile() itself can't be unit-tested without the same
+// live-system risk this test suite avoids everywhere else, so it isn't
+// exercised here.
 
 func TestMaybeReconnectLastModeNoOpWhenDisabled(t *testing.T) {
 	h := newHarness(t)
@@ -29,7 +28,7 @@ func TestMaybeReconnectLastModeNoOpWhenDisabled(t *testing.T) {
 	h.mgr.MaybeReconnectLastMode()
 
 	for _, e := range h.log.snapshot() {
-		if e == "fast:start" || e == "private:connect" {
+		if e == "fast:start" {
 			t.Fatalf("expected no reconnect attempt while disabled, got %v", h.log.snapshot())
 		}
 	}
@@ -67,23 +66,6 @@ func TestMaybeReconnectLastModeResumesFastMode(t *testing.T) {
 	}
 	if got := h.mgr.Status(); got.SubMode != SubModeFast {
 		t.Errorf("expected SubModeFast after resume, got %v", got.SubMode)
-	}
-}
-
-func TestMaybeReconnectLastModeResumesPrivateMode(t *testing.T) {
-	h := newHarness(t)
-	h.mgr.mu.Lock()
-	h.mgr.settings = Settings{ReconnectOnLaunch: true, LastMode: SubModePrivate}
-	h.mgr.mu.Unlock()
-
-	h.mgr.MaybeReconnectLastMode()
-
-	entries := h.log.snapshot()
-	if indexOf(entries, "private:connect") == -1 {
-		t.Fatalf("expected private:connect, got %v", entries)
-	}
-	if got := h.mgr.Status(); got.SubMode != SubModePrivate {
-		t.Errorf("expected SubModePrivate after resume, got %v", got.SubMode)
 	}
 }
 

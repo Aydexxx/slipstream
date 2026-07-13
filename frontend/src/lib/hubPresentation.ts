@@ -1,4 +1,4 @@
-import {AlertTriangle, Loader2, Power, ShieldAlert, ShieldCheck, ShieldHalf, Zap, type LucideIcon} from 'lucide-react'
+import {AlertTriangle, Loader2, Power, Zap, type LucideIcon} from 'lucide-react'
 import type {statemachine} from '../../wailsjs/go/models'
 
 export type HubTone = 'muted' | 'accent' | 'success' | 'warning' | 'danger'
@@ -26,11 +26,10 @@ function fastTarget(mode: string | undefined): string {
 }
 
 /**
- * Maps the single unified backend status to how the central hub should look.
- * This is a pure projection of reality — it never anticipates a request that
- * hasn't landed as a real status yet (the "state always reflects reality"
- * rule). Order matters: the most safety-critical conditions (error, then a
- * kill switch blocking traffic) win over the nominal mode states.
+ * Maps the unified backend status to how the central hub should look. This is
+ * a pure projection of reality — it never anticipates a request that hasn't
+ * landed as a real status yet (the "state always reflects reality" rule). Order
+ * matters: the error state wins over the nominal Fast Mode / Off states.
  */
 export function hubPresentation(status: statemachine.Status | null): HubPresentation {
     if (!status) {
@@ -43,18 +42,6 @@ export function hubPresentation(status: statemachine.Status | null): HubPresenta
             Icon: AlertTriangle,
             label: 'Error',
             sublabel: status.error || 'Something went wrong',
-            busy: false,
-        }
-    }
-
-    // Kill switch holding traffic closed while not actually connected: the user
-    // is offline-by-design and needs to know. Mirrors useTrayNotifications.
-    if (status.killSwitchArmed && status.state !== 'private-active') {
-        return {
-            tone: 'danger',
-            Icon: ShieldAlert,
-            label: 'Kill switch engaged',
-            sublabel: 'Traffic blocked until the tunnel reconnects',
             busy: false,
         }
     }
@@ -77,28 +64,7 @@ export function hubPresentation(status: statemachine.Status | null): HubPresenta
         }
     }
 
-    if (status.state === 'private-connecting') {
-        return {
-            tone: 'warning',
-            Icon: ShieldHalf,
-            label: 'Connecting…',
-            sublabel: 'Establishing the secure tunnel',
-            busy: true,
-        }
-    }
-
-    if (status.state === 'private-active') {
-        const host = status.privateStatus?.endpoint || ''
-        return {
-            tone: 'success',
-            Icon: ShieldCheck,
-            label: 'Private Mode active',
-            sublabel: host ? `Encrypted tunnel · ${host}` : 'Encrypted full tunnel',
-            busy: false,
-        }
-    }
-
-    // A generic transition (e.g. tearing a mode down) with no sub-mode claimed.
+    // A generic transition (e.g. tearing the mode down) with no sub-mode claimed.
     if (status.transitioning) {
         return {tone: 'accent', Icon: Loader2, label: 'Working…', sublabel: 'Applying your change', busy: true}
     }

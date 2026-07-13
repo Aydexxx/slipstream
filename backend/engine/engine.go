@@ -1,8 +1,7 @@
 // Package engine manages the vendored third-party binaries Slipstream
-// drives (zapret for Fast Mode, AmneziaWG for Private Mode). Binaries are
-// embedded at build time (see assets/assets.go) and never downloaded at
-// runtime; this package only extracts them to a per-user directory and
-// verifies their integrity.
+// drives (zapret for Fast Mode). Binaries are embedded at build time (see
+// assets/assets.go) and never downloaded at runtime; this package only
+// extracts them to a per-user directory and verifies their integrity.
 package engine
 
 import (
@@ -51,10 +50,6 @@ func (m *Manager) WinwsPath() string        { return m.Path(ModeFast, "winws.exe
 func (m *Manager) WinDivertSysPath() string { return m.Path(ModeFast, "WinDivert64.sys") }
 func (m *Manager) WinDivertDLLPath() string { return m.Path(ModeFast, "WinDivert.dll") }
 func (m *Manager) CygwinDLLPath() string    { return m.Path(ModeFast, "cygwin1.dll") }
-
-// Private Mode (AmneziaWG) file paths.
-func (m *Manager) AmneziaWGPath() string { return m.Path(ModePrivate, "amneziawg.exe") }
-func (m *Manager) WintunDLLPath() string { return m.Path(ModePrivate, "wintun.dll") }
 
 // EnsureExtracted extracts every vendored engine file to its per-user
 // destination, but only if that destination is missing or its on-disk

@@ -2,8 +2,8 @@
 // (zapret) to defeat DPI via TLS ClientHello fragmentation, switches the
 // system resolver to encrypted Cloudflare DoH to defeat DNS poisoning, and
 // guarantees that every stop path — clean Stop, app exit, a hard kill, or a
-// crash — restores the user's original DNS. No proxy and no tunnel are
-// involved, so there is no measurable speed loss.
+// crash — restores the user's original DNS. Traffic is never routed through a
+// proxy or remote server, so there is no measurable speed loss.
 //
 // Fast Mode requires Administrator (WinDivert loads a kernel driver and DNS
 // is a system setting); the app already elevates at launch.

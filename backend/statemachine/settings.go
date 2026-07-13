@@ -33,7 +33,7 @@ func loadSettings(stateDataDir string) (Settings, error) {
 }
 
 // saveSettings writes settings atomically (tmp file + rename), matching the
-// idiom already used for the DNS backup and kill-switch marker files.
+// idiom already used for the DNS backup file.
 func saveSettings(stateDataDir string, s Settings) error {
 	if err := os.MkdirAll(stateDataDir, 0o755); err != nil {
 		return fmt.Errorf("create state directory: %w", err)

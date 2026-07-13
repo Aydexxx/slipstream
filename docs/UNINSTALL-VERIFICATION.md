@@ -40,14 +40,10 @@ Section "Uninstall entries named Slipstream" {
 
 # Services
 Section "WinDivert service" { sc.exe query WinDivert }
-Section "AmneziaWG tunnel service" { sc.exe query 'AmneziaWGTunnel$Slipstream' }
 
 # DNS + DoH
 Section "IPv4 DNS servers" { netsh interface ipv4 show dnsservers }
 Section "DoH encryption templates" { netsh dns show encryption }
-
-# WFP kill-switch objects (provider/sublayer named "Slipstream Kill Switch")
-Section "WFP Slipstream providers" { netsh wfp show state file=- 2>$null | Select-String "Slipstream" }
 
 # Shortcuts
 Section "Shortcuts" {
@@ -67,9 +63,8 @@ Write-Host "Snapshot written to $out"
    .\slipstream-snapshot.ps1 -Label before
    ```
 2. Install and use Slipstream: run **Fast Mode** at least once (exercises DNS +
-   DoH + WinDivert), and connect **Private Mode** at least once (exercises the
-   tunnel service + WFP kill switch). Enable **Start with Windows** so the Run
-   key is present. Then turn everything off.
+   DoH + WinDivert). Enable **Start with Windows** so the Run key is present.
+   Then turn everything off.
 3. **Uninstall** via Settings → Advanced → *Uninstall*, and confirm.
 4. Wait ~10 seconds for the self-deleting finalizer to complete (watch
    `%TEMP%\slipstream-uninstall.log` for `uninstall completed cleanly`). Then:
@@ -91,11 +86,9 @@ The `after` snapshot must match `before`:
 - `Uninstall entries named Slipstream` → **none**.
 - `WinDivert service` → `1060: service does not exist` (or matches the
   pre-install baseline if you had WinDivert from another tool).
-- `AmneziaWG tunnel service` → `1060: service does not exist`.
 - `IPv4 DNS servers` → back to your original resolver (DHCP or your static
   servers), **not** `1.1.1.1`/`1.0.0.1`.
 - `DoH encryption templates` → no Cloudflare template that wasn't there before.
-- `WFP Slipstream providers` → **no matches**.
 - `Shortcuts` → all **False**.
 - `slipstream.exe` and its install directory are gone; the uninstaller helper in
   `%TEMP%` has deleted itself.
@@ -105,11 +98,10 @@ and a bug.
 
 ## Notes
 
-- The kill switch is intentionally **fail-closed** (non-dynamic WFP session). If
-  you force-kill the app while Private Mode is armed, connectivity stays blocked
-  until you relaunch Slipstream (its startup reconciler removes the filters) or
-  reboot — this is by design, not a leftover.
+- Fast Mode never blocks traffic, so a hard kill can never strand you offline —
+  it only leaves the system DNS pointed at Cloudflare, which the next launch's
+  startup reconciler restores.
 - Automated unit tests cover the uninstaller's pure logic (command construction,
   path/flag handling, best-effort orchestration). The live system teardown above
-  is a manual step because it mutates real WFP/DNS/service/registry state, which
+  is a manual step because it mutates real DNS/service/registry state, which
   is unsafe to exercise in CI.

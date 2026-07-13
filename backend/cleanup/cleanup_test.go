@@ -7,7 +7,7 @@ import (
 )
 
 // NOTE: these tests only exercise the pure/local helpers. RestoreNetworkState
-// and PurgeTraces drive real netsh/sc/WFP/service teardown and must never run
+// and PurgeTraces drive real netsh/sc/service teardown and must never run
 // in a unit test — they are covered by the manual verification procedure in
 // docs/UNINSTALL-VERIFICATION.md.
 
@@ -42,12 +42,6 @@ func TestDefaultDepsLayout(t *testing.T) {
 	}
 	if d.FastDataDir != filepath.Join(d.RootDir, "fastmode") {
 		t.Errorf("FastDataDir = %q", d.FastDataDir)
-	}
-	if d.PrivateDataDir != filepath.Join(d.RootDir, "private") {
-		t.Errorf("PrivateDataDir = %q", d.PrivateDataDir)
-	}
-	if d.AmneziaWGPath != filepath.Join(d.RootDir, "engine", "private", "amneziawg.exe") {
-		t.Errorf("AmneziaWGPath = %q", d.AmneziaWGPath)
 	}
 	if d.InstallExePath != `C:\install\slipstream.exe` {
 		t.Errorf("InstallExePath = %q", d.InstallExePath)

@@ -1,15 +1,13 @@
 # Slipstream
 
-Slipstream is a Windows anti-censorship client with two modes:
+Slipstream is a Windows anti-censorship client built around a single purpose:
 
 - **Fast Mode** — defeats DPI-based blocking (TLS ClientHello fragmentation via
-  `winws.exe`/WinDivert) and switches DNS to encrypted Cloudflare DoH. No
-  tunnel, no measurable speed loss.
-- **Private Mode** — a full obfuscated WireGuard (AmneziaWG) tunnel to *your
-  own* VPS, with a fail-closed kill switch: if the tunnel drops, a Windows
-  Filtering Platform rule blocks all non-tunnel traffic until it reconnects.
+  `winws.exe`/WinDivert) and switches DNS to encrypted Cloudflare DoH. Traffic
+  still goes straight out — no proxy, no remote server, no measurable speed
+  loss.
 
-Both modes run from a single window or the system tray. See
+It runs from a single window or the system tray. See
 [`SECURITY.md`](SECURITY.md) for exactly what Slipstream does to your network
 and what it stores.
 
@@ -33,20 +31,15 @@ Both are built from the same source by the same script
 ## First run
 
 1. **UAC prompt.** Slipstream always runs elevated — it loads a kernel driver
-   (Fast Mode) and configures DNS/firewall/services, none of which are
+   (WinDivert) and changes the system DNS resolver, neither of which is
    possible without Administrator.
 2. On first launch, Slipstream extracts and SHA-256-verifies its bundled
    engine binaries to `%LocalAppData%\Slipstream\engine\`. This only happens
    once (or again after an update).
-3. Pick a mode from the main window or the tray icon:
-   - **Fast Mode** works immediately — choose Full, Discord, or Custom
-     domains and start it.
-   - **Private Mode** needs your AmneziaWG config first: open Settings →
-     Private Mode and paste the config for your VPS (see
-     [`docs/private-mode/PROVISIONING.md`](docs/private-mode/PROVISIONING.md)
-     if you need to stand one up). The config is encrypted at rest via
-     Windows DPAPI before it touches disk.
-4. Everything you'd want day-to-day — mode toggles, connection status,
+3. Turn Fast Mode on from the main window or the tray icon — choose Full,
+   Discord, or Custom domains and start it. It works immediately; there's
+   nothing to configure first.
+4. Everything you'd want day-to-day — the on/off toggle, connection status,
    auto-start, "Reset & Quit" — is reachable from the tray icon without
    opening the window.
 
@@ -62,7 +55,7 @@ entries, driver/service artifacts, and everything under
   works whether you installed or are running the portable exe, and is what
   the Add/Remove Programs uninstaller calls internally too.
 
-Either path restores your original DNS/routing/firewall state and leaves no
+Either path restores your original DNS state and leaves no
 trace. To verify this yourself, follow
 [`docs/UNINSTALL-VERIFICATION.md`](docs/UNINSTALL-VERIFICATION.md).
 
@@ -114,5 +107,3 @@ access to the bound Go methods via the browser devtools at
   elevation, and the uninstall guarantee.
 - [`CHANGELOG.md`](CHANGELOG.md) — release history.
 - [`ENGINES.md`](ENGINES.md) — provenance of the bundled third-party binaries.
-- [`docs/private-mode/`](docs/private-mode/) — provisioning and hardening a
-  Private Mode VPS.

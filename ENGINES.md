@@ -46,38 +46,6 @@ self-consistency (confirms the download wasn't corrupted/tampered in
 transit and matches what the project's CI produced), not independent
 third-party attestation — zapret does not GPG-sign releases.
 
-## Private Mode — AmneziaWG (amneziawg-go) + Wintun
-
-Upstream: https://github.com/amnezia-vpn/amneziawg-go (protocol source;
-no prebuilt Windows binaries published there)
-Windows build actually sourced from: https://github.com/amnezia-vpn/amneziawg-windows-client
-Release: `2.0.1` (https://github.com/amnezia-vpn/amneziawg-windows-client/releases/tag/2.0.1)
-Installer: https://github.com/amnezia-vpn/amneziawg-windows-client/releases/download/2.0.1/amneziawg-amd64-2.0.1.msi
-
-`amneziawg-go` has no standalone Windows binary release; the Windows build
-of it ships inside Amnezia's official signed MSI installer (same pattern
-as upstream WireGuard, whose `wireguard-go` is bundled inside
-`wireguard.exe` rather than distributed loose). We extracted the payload
-via an MSI administrative install (`msiexec /a`) rather than executing the
-installer, and verified Authenticode signatures on both the MSI and the
-extracted payloads before vendoring them.
-
-| File | SHA-256 | Notes |
-|---|---|---|
-| `assets/bin/privatemode/amneziawg.exe` | `5475fed5125b13fe7be53b5ee2a6e8b3b8377bac13f983d9cbd6193db989277c` | Windows build of amneziawg-go (FileDescription: "AmneziaWG: Fast, Modern, Secure VPN Tunnel"). Authenticode-signed by Privacy Technologies OU (Amnezia's legal entity, EE). |
-| `assets/bin/privatemode/wintun.dll` | `e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce` | Wintun 0.14.1. Authenticode-signed by WireGuard LLC — this is the genuine upstream wintun.net build, redistributed by Amnezia the same way WireGuard's own client does. |
-
-The MSI itself is also Authenticode-signed (`Privacy Technologies OU`,
-issued by Sectigo, valid at vendor time). All three signatures
-(installer, `amneziawg.exe`, `wintun.dll`) were checked with
-`Get-AuthenticodeSignature` and confirmed `Valid` before extraction.
-
-Not vendored: `awg.exe` (a `wg(8)`-equivalent CLI also present in the same
-installer payload). Out of scope for this phase — only the two files the
-task asked for (`amneziawg-go` + `wintun.dll`) were vendored. Add it later
-from the same 2.0.1 installer if a future phase needs CLI-based
-configuration instead of driving the UAPI directly.
-
 ## Re-vendoring / updating a pinned version
 
 1. Download the new release from the URLs above (or their successors).

@@ -6,5 +6,4 @@ package assets
 import "embed"
 
 //go:embed bin/fastmode/winws.exe bin/fastmode/WinDivert64.sys bin/fastmode/WinDivert.dll bin/fastmode/cygwin1.dll
-//go:embed bin/privatemode/amneziawg.exe bin/privatemode/wintun.dll
 var Bin embed.FS

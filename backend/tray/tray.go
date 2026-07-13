@@ -50,7 +50,6 @@ type Tray struct {
 	mOpen      *systray.MenuItem
 	mOff       *systray.MenuItem
 	mFast      *systray.MenuItem
-	mPrivate   *systray.MenuItem
 	mAutostart *systray.MenuItem
 	mReconnect *systray.MenuItem
 	mReset     *systray.MenuItem
@@ -75,9 +74,8 @@ func (t *Tray) onReady() {
 
 	t.mOpen = systray.AddMenuItem("Open Window", "Show the Slipstream window")
 	systray.AddSeparator()
-	t.mOff = systray.AddMenuItemCheckbox("Off", "Turn everything off", true)
-	t.mFast = systray.AddMenuItemCheckbox("Fast Mode", "Defeat DPI without a tunnel", false)
-	t.mPrivate = systray.AddMenuItemCheckbox("Private Mode", "Full obfuscated tunnel", false)
+	t.mOff = systray.AddMenuItemCheckbox("Off", "Turn Fast Mode off", true)
+	t.mFast = systray.AddMenuItemCheckbox("Fast Mode", "Defeat DPI in place, no server required", false)
 	systray.AddSeparator()
 
 	autostartEnabled, err := autostart.IsEnabled(t.cfg.AppName)
@@ -152,13 +150,6 @@ func (t *Tray) handleClicks() {
 				mode, strategy, domains := t.cfg.Manager.LastFastSelection()
 				if err := t.cfg.Manager.RequestFastMode(mode, strategy, domains); err != nil && t.cfg.Log != nil {
 					t.cfg.Log.Error("tray: start fast mode failed", "error", err)
-				}
-			}()
-
-		case <-t.mPrivate.ClickedCh:
-			go func() {
-				if err := t.cfg.Manager.RequestPrivateMode(); err != nil && t.cfg.Log != nil {
-					t.cfg.Log.Error("tray: connect private mode failed", "error", err)
 				}
 			}()
 
@@ -242,7 +233,6 @@ func (t *Tray) applyStatus(s statemachine.Status) {
 
 	setChecked(t.mOff, s.SubMode == statemachine.SubModeNone)
 	setChecked(t.mFast, s.SubMode == statemachine.SubModeFast)
-	setChecked(t.mPrivate, s.SubMode == statemachine.SubModePrivate)
 	setChecked(t.mReconnect, s.ReconnectOnLaunch)
 }
 
@@ -258,18 +248,11 @@ func setChecked(item *systray.MenuItem, checked bool) {
 }
 
 // iconFor picks the tray icon for a status snapshot. Any error takes
-// priority; next, a kill switch that's armed but not backed by a healthy
-// connection means traffic is currently fail-closed-blocked — worth flagging
-// distinctly even before it becomes an outright error (e.g. while
-// reconnecting after a drop).
+// priority over the nominal Fast Mode / Off states.
 func iconFor(s statemachine.Status) []byte {
 	switch {
 	case s.State == statemachine.StateError:
 		return alertIcon
-	case s.KillSwitchArmed && s.State != statemachine.StatePrivateActive:
-		return alertIcon
-	case s.State == statemachine.StatePrivateActive:
-		return privateIcon
 	case s.State == statemachine.StateFastActive:
 		return fastIcon
 	default:
@@ -281,10 +264,6 @@ func tooltipFor(s statemachine.Status) string {
 	switch {
 	case s.State == statemachine.StateError:
 		return "Slipstream — Error"
-	case s.KillSwitchArmed && s.State != statemachine.StatePrivateActive:
-		return "Slipstream — Kill switch engaged"
-	case s.State == statemachine.StatePrivateActive:
-		return "Slipstream — Private Mode (connected)"
 	case s.State == statemachine.StateFastActive:
 		return "Slipstream — Fast Mode"
 	default:

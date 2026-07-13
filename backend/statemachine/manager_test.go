@@ -1,7 +1,6 @@
 package statemachine
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -9,12 +8,10 @@ import (
 	"time"
 
 	"slipstream/backend/fastmode"
-	"slipstream/backend/privatemode"
 )
 
-// callLog records fast/private controller calls in a single ordered
-// sequence, shared between both fakes, so tests can assert the relative
-// order of teardown vs. start across the two controllers.
+// callLog records fast controller calls in an ordered sequence, so tests can
+// assert the relative order of teardown vs. start.
 type callLog struct {
 	mu      sync.Mutex
 	entries []string
@@ -112,87 +109,6 @@ func (f *fakeFast) setStatus(s fastmode.Status) {
 	}
 }
 
-type fakePrivate struct {
-	log *callLog
-
-	mu              sync.Mutex
-	connectErr      error
-	disconnectErr   error
-	killSwitchArmed bool
-	status          privatemode.Status
-	emitter         privatemode.Emitter
-}
-
-func (p *fakePrivate) Connect() error {
-	p.log.add("private:connect")
-	p.mu.Lock()
-	err := p.connectErr
-	p.mu.Unlock()
-	if err != nil {
-		p.setStatus(privatemode.Status{State: privatemode.StateError, Error: err.Error()})
-		return err
-	}
-	p.setStatus(privatemode.Status{State: privatemode.StateConnecting})
-	return nil
-}
-
-func (p *fakePrivate) Disconnect() error {
-	p.log.add("private:disconnect")
-	p.mu.Lock()
-	err := p.disconnectErr
-	p.mu.Unlock()
-	p.setStatus(privatemode.Status{State: privatemode.StateDisconnected})
-	return err
-}
-
-func (p *fakePrivate) Status() privatemode.Status {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.status
-}
-
-func (p *fakePrivate) SetEmitter(e privatemode.Emitter) {
-	p.mu.Lock()
-	p.emitter = e
-	p.mu.Unlock()
-}
-
-func (p *fakePrivate) KillSwitchArmed() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.killSwitchArmed
-}
-
-func (p *fakePrivate) DisarmKillSwitch() error {
-	p.log.add("private:disarm")
-	p.mu.Lock()
-	p.killSwitchArmed = false
-	p.mu.Unlock()
-	return nil
-}
-
-func (p *fakePrivate) Shutdown() { p.log.add("private:shutdown") }
-
-func (p *fakePrivate) ImportConfig(raw string) (privatemode.Summary, error) {
-	return privatemode.Summary{}, nil
-}
-func (p *fakePrivate) HasConfig() bool                             { return false }
-func (p *fakePrivate) ConfigSummary() (privatemode.Summary, error) { return privatemode.Summary{}, nil }
-func (p *fakePrivate) DeleteConfig() error                         { return nil }
-func (p *fakePrivate) ExternalIP(ctx context.Context) (string, error) {
-	return "", errors.New("not implemented in fake")
-}
-
-func (p *fakePrivate) setStatus(s privatemode.Status) {
-	p.mu.Lock()
-	p.status = s
-	e := p.emitter
-	p.mu.Unlock()
-	if e != nil {
-		e(s)
-	}
-}
-
 // statusRecorder captures every unified Status the Manager emits, so tests
 // can assert on what the frontend would actually receive (in particular the
 // transitioning flag driving the mode buttons' pending/disabled state).
@@ -227,31 +143,28 @@ func (r *statusRecorder) any(pred func(Status) bool) bool {
 	return false
 }
 
-// harness bundles a Manager with its fakes for a test.
+// harness bundles a Manager with its fake for a test.
 type harness struct {
-	mgr     *Manager
-	fast    *fakeFast
-	private *fakePrivate
-	log     *callLog
+	mgr  *Manager
+	fast *fakeFast
+	log  *callLog
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	log := &callLog{}
 	fast := &fakeFast{log: log}
-	private := &fakePrivate{log: log}
 	mgr, err := New(Config{
 		Fast:         fast,
-		Private:      private,
 		StateDataDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	return &harness{mgr: mgr, fast: fast, private: private, log: log}
+	return &harness{mgr: mgr, fast: fast, log: log}
 }
 
-func TestSwitchFastToPrivateTearsDownFastFirstAndVerifies(t *testing.T) {
+func TestRequestFastModeActivates(t *testing.T) {
 	h := newHarness(t)
 
 	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
@@ -260,22 +173,12 @@ func TestSwitchFastToPrivateTearsDownFastFirstAndVerifies(t *testing.T) {
 	if got := h.mgr.Status(); got.State != StateFastActive || got.SubMode != SubModeFast {
 		t.Fatalf("after fast start: state=%v subMode=%v", got.State, got.SubMode)
 	}
-
-	if err := h.mgr.RequestPrivateMode(); err != nil {
-		t.Fatalf("RequestPrivateMode: %v", err)
-	}
-	if got := h.mgr.Status(); got.State != StatePrivateConnecting || got.SubMode != SubModePrivate {
-		t.Fatalf("after private connect: state=%v subMode=%v", got.State, got.SubMode)
-	}
-
-	entries := h.log.snapshot()
-	stopIdx, connectIdx := indexOf(entries, "fast:stop"), indexOf(entries, "private:connect")
-	if stopIdx == -1 || connectIdx == -1 || stopIdx > connectIdx {
-		t.Fatalf("expected fast:stop before private:connect, got %v", entries)
+	if indexOf(h.log.snapshot(), "fast:start") == -1 {
+		t.Fatalf("RequestFastMode never reached fast:start, got %v", h.log.snapshot())
 	}
 }
 
-func TestTeardownErrorBlocksSwitchAndDoesNotStartTarget(t *testing.T) {
+func TestRequestIdleTeardownErrorGoesToError(t *testing.T) {
 	h := newHarness(t)
 	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
@@ -284,61 +187,32 @@ func TestTeardownErrorBlocksSwitchAndDoesNotStartTarget(t *testing.T) {
 	h.fast.stopErr = errors.New("dns restore failed")
 	h.fast.mu.Unlock()
 
-	err := h.mgr.RequestPrivateMode()
+	err := h.mgr.RequestIdle()
 	if err == nil {
-		t.Fatal("expected RequestPrivateMode to fail when teardown errors")
+		t.Fatal("expected RequestIdle to fail when teardown errors")
 	}
 	if got := h.mgr.Status(); got.State != StateError {
 		t.Fatalf("expected StateError, got %v", got.State)
 	}
-	for _, e := range h.log.snapshot() {
-		if e == "private:connect" {
-			t.Fatal("private:connect must not be called when fast teardown failed")
-		}
-	}
 }
 
-func TestVerifyCleanBlocksSwitchOnDirtyDNS(t *testing.T) {
+func TestVerifyCleanBlocksIdleOnDirtyDNS(t *testing.T) {
 	h := newHarness(t)
 	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 	// Stop() itself reports success, but the live DNS-pending signal says
-	// otherwise — verifyClean must still block the switch.
+	// otherwise — verifyClean must still block returning to idle.
 	h.fast.mu.Lock()
 	h.fast.dnsPending = true
 	h.fast.mu.Unlock()
 
-	err := h.mgr.RequestPrivateMode()
+	err := h.mgr.RequestIdle()
 	if err == nil || !strings.Contains(err.Error(), "DNS") {
 		t.Fatalf("expected a DNS-pending teardown error, got %v", err)
 	}
-	for _, e := range h.log.snapshot() {
-		if e == "private:connect" {
-			t.Fatal("private:connect must not be called when DNS is still pending restore")
-		}
-	}
-}
-
-func TestVerifyCleanBlocksSwitchOnArmedKillSwitch(t *testing.T) {
-	h := newHarness(t)
-	if err := h.mgr.RequestPrivateMode(); err != nil {
-		t.Fatalf("RequestPrivateMode: %v", err)
-	}
-	// Disconnect() itself reports success, but the live kill-switch-armed
-	// signal says otherwise — verifyClean must still block the switch.
-	h.private.mu.Lock()
-	h.private.killSwitchArmed = true
-	h.private.mu.Unlock()
-
-	err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil)
-	if err == nil || !strings.Contains(err.Error(), "kill switch") {
-		t.Fatalf("expected a kill-switch-armed teardown error, got %v", err)
-	}
-	for _, e := range h.log.snapshot() {
-		if e == "fast:start" {
-			t.Fatal("fast:start must not be called when the kill switch is still armed")
-		}
+	if got := h.mgr.Status(); got.State != StateError {
+		t.Fatalf("expected StateError, got %v", got.State)
 	}
 }
 
@@ -412,7 +286,7 @@ func TestRequestIdleWhenAlreadyIdleIsClean(t *testing.T) {
 		t.Fatalf("RequestIdle: %v", err)
 	}
 	for _, e := range h.log.snapshot() {
-		if e == "fast:stop" || e == "private:disconnect" {
+		if e == "fast:stop" {
 			t.Fatalf("no teardown should run when already idle, got %v", h.log.snapshot())
 		}
 	}
@@ -450,7 +324,7 @@ func TestConcurrentRequestsSerialize(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	second := h.mgr.RequestPrivateMode()
+	second := h.mgr.RequestIdle()
 	if second == nil || !strings.Contains(second.Error(), "changing mode") {
 		t.Fatalf("expected the second call to be rejected as busy, got %v", second)
 	}
@@ -460,28 +334,28 @@ func TestConcurrentRequestsSerialize(t *testing.T) {
 		t.Fatalf("first RequestFastMode: %v", err)
 	}
 	for _, e := range h.log.snapshot() {
-		if e == "private:connect" {
-			t.Fatal("private:connect must never run while fast mode was starting")
+		if e == "fast:stop" {
+			t.Fatal("fast:stop must never run while fast mode was starting")
 		}
 	}
 }
 
-func TestAsyncNoHandshakeFlipsToErrorOutsideRequestCall(t *testing.T) {
+func TestAsyncFailedFlipsToErrorOutsideRequestCall(t *testing.T) {
 	h := newHarness(t)
-	if err := h.mgr.RequestPrivateMode(); err != nil {
-		t.Fatalf("RequestPrivateMode: %v", err)
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
+		t.Fatalf("RequestFastMode: %v", err)
 	}
 
-	// Simulate the monitor goroutine's giveUp() firing asynchronously, with
-	// no Request* call in flight.
-	h.private.setStatus(privatemode.Status{State: privatemode.StateNoHandshake, Error: "handshake never completed"})
+	// Simulate the supervisor firing asynchronously (e.g. winws.exe crashed
+	// out for good), with no Request* call in flight.
+	h.fast.setStatus(fastmode.Status{State: fastmode.StateFailed, Error: "winws exited repeatedly"})
 
 	got := h.mgr.Status()
 	if got.State != StateError {
-		t.Fatalf("expected StateError after async NoHandshake, got %v", got.State)
+		t.Fatalf("expected StateError after async Failed, got %v", got.State)
 	}
-	if got.Error != "handshake never completed" {
-		t.Fatalf("expected the turkey message to surface, got %q", got.Error)
+	if got.Error != "winws exited repeatedly" {
+		t.Fatalf("expected the failure message to surface, got %q", got.Error)
 	}
 }
 
@@ -489,8 +363,7 @@ func TestSettingsPersistAcrossManagerInstances(t *testing.T) {
 	dir := t.TempDir()
 	log1 := &callLog{}
 	fast1 := &fakeFast{log: log1}
-	private1 := &fakePrivate{log: log1}
-	mgr1, err := New(Config{Fast: fast1, Private: private1, StateDataDir: dir})
+	mgr1, err := New(Config{Fast: fast1, StateDataDir: dir})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -503,8 +376,7 @@ func TestSettingsPersistAcrossManagerInstances(t *testing.T) {
 
 	log2 := &callLog{}
 	fast2 := &fakeFast{log: log2}
-	private2 := &fakePrivate{log: log2}
-	mgr2, err := New(Config{Fast: fast2, Private: private2, StateDataDir: dir})
+	mgr2, err := New(Config{Fast: fast2, StateDataDir: dir})
 	if err != nil {
 		t.Fatalf("second New: %v", err)
 	}

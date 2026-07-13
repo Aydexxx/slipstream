@@ -15,21 +15,10 @@ func TestIconForPriority(t *testing.T) {
 	}{
 		{"idle", statemachine.Status{State: statemachine.StateIdle}, offIcon},
 		{"fast active", statemachine.Status{State: statemachine.StateFastActive}, fastIcon},
-		{"private active", statemachine.Status{State: statemachine.StatePrivateActive}, privateIcon},
 		{"error", statemachine.Status{State: statemachine.StateError}, alertIcon},
 		{
-			"kill switch armed while connecting",
-			statemachine.Status{State: statemachine.StatePrivateConnecting, KillSwitchArmed: true},
-			alertIcon,
-		},
-		{
-			"kill switch armed and connected is normal, not alert",
-			statemachine.Status{State: statemachine.StatePrivateActive, KillSwitchArmed: true},
-			privateIcon,
-		},
-		{
-			"error takes priority over armed-and-connected",
-			statemachine.Status{State: statemachine.StateError, KillSwitchArmed: true},
+			"error takes priority over fast active",
+			statemachine.Status{State: statemachine.StateError},
 			alertIcon,
 		},
 	}
@@ -46,9 +35,7 @@ func TestTooltipForNonEmpty(t *testing.T) {
 	states := []statemachine.Status{
 		{State: statemachine.StateIdle},
 		{State: statemachine.StateFastActive},
-		{State: statemachine.StatePrivateActive},
 		{State: statemachine.StateError},
-		{State: statemachine.StatePrivateConnecting, KillSwitchArmed: true},
 	}
 	for _, s := range states {
 		if got := tooltipFor(s); got == "" {

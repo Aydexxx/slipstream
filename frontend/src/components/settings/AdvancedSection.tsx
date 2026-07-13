@@ -51,8 +51,8 @@ export function AdvancedSection() {
                 <div>
                     <p className="text-sm font-medium text-text">Uninstall Slipstream</p>
                     <p className="text-xs text-text-secondary">
-                        Restores networking and permanently removes everything: settings, your imported config, engine
-                        files, the startup entry, shortcuts, and the app itself.
+                        Restores networking and permanently removes everything: settings, engine files, the startup
+                        entry, shortcuts, and the app itself.
                     </p>
                 </div>
                 <Button size="sm" variant="danger" onClick={() => setConfirmingUninstall(true)} disabled={busy}>
@@ -67,7 +67,7 @@ export function AdvancedSection() {
                 onOpenChange={setConfirmingUninstall}
                 tone="danger"
                 title="Uninstall Slipstream?"
-                description="This can't be undone. Slipstream will restore your networking, then permanently remove all of its files, settings, your imported config, and the app itself."
+                description="This can't be undone. Slipstream will restore your networking, then permanently remove all of its files, settings, and the app itself."
                 confirmLabel="Remove everything"
                 loading={busy}
                 onConfirm={handleUninstall}

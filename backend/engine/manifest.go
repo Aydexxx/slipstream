@@ -6,8 +6,7 @@ import "fmt"
 type Mode string
 
 const (
-	ModeFast    Mode = "fastmode"
-	ModePrivate Mode = "privatemode"
+	ModeFast Mode = "fastmode"
 )
 
 // fileSpec pins one vendored file to its embedded path and expected
@@ -25,19 +24,12 @@ var fastModeFiles = []fileSpec{
 	{embedPath: "bin/fastmode/cygwin1.dll", sha256: "103104a52e5293ce418944725df19e2bf81ad9269b9a120d71d39028e821499b"},
 }
 
-var privateModeFiles = []fileSpec{
-	{embedPath: "bin/privatemode/amneziawg.exe", sha256: "5475fed5125b13fe7be53b5ee2a6e8b3b8377bac13f983d9cbd6193db989277c"},
-	{embedPath: "bin/privatemode/wintun.dll", sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"},
-}
-
-var allModes = []Mode{ModeFast, ModePrivate}
+var allModes = []Mode{ModeFast}
 
 func filesForMode(mode Mode) ([]fileSpec, error) {
 	switch mode {
 	case ModeFast:
 		return fastModeFiles, nil
-	case ModePrivate:
-		return privateModeFiles, nil
 	default:
 		return nil, fmt.Errorf("unknown engine mode %q", mode)
 	}
