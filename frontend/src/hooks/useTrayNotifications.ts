@@ -1,6 +1,7 @@
 import {useEffect, useRef} from 'react'
 import {InitializeNotifications, IsNotificationAvailable, SendNotification} from '../../wailsjs/runtime/runtime'
 import {useAppState} from '../state/useAppState'
+import {useNotificationSetting} from './useNotificationSetting'
 
 interface EdgeState {
     error: boolean
@@ -16,8 +17,14 @@ interface EdgeState {
  */
 export function useTrayNotifications() {
     const {status} = useAppState()
+    const {enabled} = useNotificationSetting()
     const readyRef = useRef(false)
     const prevRef = useRef<EdgeState | null>(null)
+    // Keep the latest preference readable from the status effect without making
+    // it a dependency (we still want prevRef to track edges while disabled, so
+    // re-enabling doesn't replay a pre-existing condition).
+    const enabledRef = useRef(enabled)
+    enabledRef.current = enabled
 
     useEffect(() => {
         let cancelled = false
@@ -41,7 +48,7 @@ export function useTrayNotifications() {
         const isBlocked = status.killSwitchArmed === true && status.state !== 'private-active' && !isError
 
         const prev = prevRef.current
-        if (readyRef.current && prev) {
+        if (enabledRef.current && readyRef.current && prev) {
             if (isError && !prev.error) {
                 SendNotification({
                     id: 'slipstream-error',

@@ -54,6 +54,11 @@ type Status struct {
 	PrivateStatus     *privatemode.Status `json:"privateStatus,omitempty"`
 	KillSwitchArmed   bool                `json:"killSwitchArmed"`
 	ReconnectOnLaunch bool                `json:"reconnectOnLaunch"`
+	// LastFastStrategy is the persisted desync-strategy ID the user last chose
+	// for Fast Mode (settings-derived, like ReconnectOnLaunch). The frontend
+	// uses it to preselect the strategy picker before Fast Mode is started;
+	// while Fast Mode is active, FastStatus.Strategy carries the running one.
+	LastFastStrategy string `json:"lastFastStrategy"`
 }
 
 // Emitter is invoked on every unified status change (wired to a Wails event
@@ -65,6 +70,7 @@ type Emitter func(Status)
 type Settings struct {
 	LastMode          SubMode  `json:"lastMode"`
 	LastFastSubMode   string   `json:"lastFastSubMode,omitempty"`
+	LastFastStrategy  string   `json:"lastFastStrategy,omitempty"`
 	LastFastDomains   []string `json:"lastFastDomains,omitempty"`
 	ReconnectOnLaunch bool     `json:"reconnectOnLaunch"`
 }

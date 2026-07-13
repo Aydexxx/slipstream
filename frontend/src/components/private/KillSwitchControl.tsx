@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import {useAppState} from '../../state/useAppState'
 import {Button} from '../ui/Button'
+import {ConfirmDialog} from '../ui/ConfirmDialog'
 import {Switch} from '../ui/Switch'
 
 export function KillSwitchControl() {
@@ -30,20 +31,6 @@ export function KillSwitchControl() {
                 />
             </div>
 
-            {confirming && (
-                <div className="flex items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
-                    <p className="text-xs text-warning">Turn off leak protection now?</p>
-                    <div className="flex shrink-0 gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-                            Cancel
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={handleDisarm} loading={action.pending}>
-                            Confirm
-                        </Button>
-                    </div>
-                </div>
-            )}
-
             <Button
                 variant="danger"
                 size="lg"
@@ -53,6 +40,17 @@ export function KillSwitchControl() {
             >
                 Restore Internet
             </Button>
+
+            <ConfirmDialog
+                open={confirming}
+                onOpenChange={setConfirming}
+                tone="warning"
+                title="Turn off leak protection?"
+                description="This removes the kill switch and lets traffic flow outside the tunnel immediately. Your connection may be exposed until a mode is active again."
+                confirmLabel="Restore internet"
+                loading={action.pending}
+                onConfirm={handleDisarm}
+            />
         </div>
     )
 }

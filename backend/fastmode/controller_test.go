@@ -31,7 +31,7 @@ func TestStartRefusesWithoutElevation(t *testing.T) {
 	defer func() { isElevated = orig }()
 
 	c := newTestController(t)
-	err := c.Start(ModeFull, nil)
+	err := c.Start(ModeFull, "", nil)
 	if err == nil {
 		t.Fatal("expected Start to refuse when not elevated")
 	}

@@ -3,6 +3,7 @@ export namespace fastmode {
 	export class Status {
 	    state: string;
 	    mode: string;
+	    strategy: string;
 	    domains: string[];
 	    pid: number;
 	    restarts: number;
@@ -19,6 +20,7 @@ export namespace fastmode {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.state = source["state"];
 	        this.mode = source["mode"];
+	        this.strategy = source["strategy"];
 	        this.domains = source["domains"];
 	        this.pid = source["pid"];
 	        this.restarts = source["restarts"];
@@ -44,6 +46,26 @@ export namespace fastmode {
 		    }
 		    return a;
 		}
+	}
+	export class StrategyInfo {
+	    id: string;
+	    name: string;
+	    group: string;
+	    description: string;
+	    default: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StrategyInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.group = source["group"];
+	        this.description = source["description"];
+	        this.default = source["default"];
+	    }
 	}
 
 }
@@ -141,6 +163,7 @@ export namespace statemachine {
 	    privateStatus?: privatemode.Status;
 	    killSwitchArmed: boolean;
 	    reconnectOnLaunch: boolean;
+	    lastFastStrategy: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -158,6 +181,7 @@ export namespace statemachine {
 	        this.privateStatus = this.convertValues(source["privateStatus"], privatemode.Status);
 	        this.killSwitchArmed = source["killSwitchArmed"];
 	        this.reconnectOnLaunch = source["reconnectOnLaunch"];
+	        this.lastFastStrategy = source["lastFastStrategy"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -1,29 +1,27 @@
 import {useEffect, useState} from 'react'
+import {ConnectionScreen} from './components/connection/ConnectionScreen'
 import {AppShell} from './components/layout/AppShell'
-import {FastModePanel} from './components/fast/FastModePanel'
-import {ModeSelector} from './components/mode/ModeSelector'
-import {OffPanel} from './components/mode/OffPanel'
-import {PrivateModePanel} from './components/private/PrivateModePanel'
-import {SettingsDialog} from './components/settings/SettingsDialog'
+import {ModeTabBar} from './components/mode/ModeTabBar'
+import {SettingsDialog, type SettingsTab} from './components/settings/SettingsDialog'
 import {useToast} from './components/ui/Toast'
 import {useTrayNotifications} from './hooks/useTrayNotifications'
-import type {PanelKey} from './lib/types'
+import type {ModeTab} from './lib/types'
 import {useAppState} from './state/useAppState'
 
 function App() {
     const {status, action} = useAppState()
     const toast = useToast()
     useTrayNotifications()
-    const [panel, setPanel] = useState<PanelKey>('off')
-    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [tab, setTab] = useState<ModeTab>('fast')
+    const [settings, setSettings] = useState<{open: boolean; tab: SettingsTab}>({open: false, tab: 'general'})
     const [followedInitial, setFollowedInitial] = useState(false)
 
-    // Once, on the first real status snapshot, open on whichever panel
-    // matches what's actually running rather than always defaulting to Off.
+    // Once, on the first real status snapshot, land on whichever mode is
+    // actually running rather than always defaulting to Fast.
     useEffect(() => {
         if (!followedInitial && status) {
-            if (status.subMode === 'fast') setPanel('fast')
-            else if (status.subMode === 'private') setPanel('private')
+            if (status.subMode === 'private') setTab('private')
+            else setTab('fast')
             setFollowedInitial(true)
         }
     }, [status, followedInitial])
@@ -33,14 +31,22 @@ function App() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [action.error])
 
+    const openSettings = (settingsTab: SettingsTab = 'general') => setSettings({open: true, tab: settingsTab})
+
     return (
-        <AppShell onOpenSettings={() => setSettingsOpen(true)}>
-            <ModeSelector panel={panel} onPanelChange={setPanel} />
-            {panel === 'off' && <OffPanel />}
-            {panel === 'fast' && <FastModePanel />}
-            {panel === 'private' && <PrivateModePanel onOpenSettings={() => setSettingsOpen(true)} />}
-            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        </AppShell>
+        <>
+            <AppShell
+                onOpenSettings={() => openSettings()}
+                nav={<ModeTabBar value={tab} onChange={setTab} status={status} />}
+            >
+                <ConnectionScreen tab={tab} onOpenSettings={() => openSettings('network')} />
+            </AppShell>
+            <SettingsDialog
+                open={settings.open}
+                initialTab={settings.tab}
+                onOpenChange={(open) => setSettings((s) => ({...s, open}))}
+            />
+        </>
     )
 }
 

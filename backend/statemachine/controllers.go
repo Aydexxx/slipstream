@@ -13,7 +13,7 @@ import (
 // config-only operations (which aren't mode transitions) through Manager.Fast()
 // without a direct dependency on the concrete controller type.
 type FastController interface {
-	Start(mode fastmode.Mode, domains []string) error
+	Start(mode fastmode.Mode, strategyID string, domains []string) error
 	Stop() error
 	Status() fastmode.Status
 	SetEmitter(fastmode.Emitter)
@@ -21,6 +21,7 @@ type FastController interface {
 	Shutdown()
 
 	Presets() map[string][]string
+	Strategies() []fastmode.StrategyInfo
 	LoadCustomDomains() ([]string, error)
 	SaveCustomDomains(domains []string) error
 }

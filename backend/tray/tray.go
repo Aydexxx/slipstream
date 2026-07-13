@@ -149,8 +149,8 @@ func (t *Tray) handleClicks() {
 
 		case <-t.mFast.ClickedCh:
 			go func() {
-				mode, domains := t.cfg.Manager.LastFastSelection()
-				if err := t.cfg.Manager.RequestFastMode(mode, domains); err != nil && t.cfg.Log != nil {
+				mode, strategy, domains := t.cfg.Manager.LastFastSelection()
+				if err := t.cfg.Manager.RequestFastMode(mode, strategy, domains); err != nil && t.cfg.Log != nil {
 					t.cfg.Log.Error("tray: start fast mode failed", "error", err)
 				}
 			}()

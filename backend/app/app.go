@@ -139,12 +139,13 @@ func (a *App) VerifyPrivateModeEngine() error {
 
 // --- unified state machine bindings ---
 
-// RequestFastMode switches to Fast Mode. mode is "full", "discord", or
-// "custom"; domains is only used for "custom" (the resolved list of hosts to
-// unblock). If Private Mode is active, it is fully torn down and verified
-// clean first.
-func (a *App) RequestFastMode(mode string, domains []string) error {
-	return a.sm.RequestFastMode(fastmode.Mode(mode), domains)
+// RequestFastMode switches to Fast Mode. mode ("full"/"discord"/"custom") is
+// the target — what to unblock; strategyID names the DPI-bypass strategy — how
+// to unblock it (see fastmode/strategies.go; "" resolves to the default).
+// domains is only used for "custom" (the resolved list of hosts to unblock).
+// If Private Mode is active, it is fully torn down and verified clean first.
+func (a *App) RequestFastMode(mode string, strategyID string, domains []string) error {
+	return a.sm.RequestFastMode(fastmode.Mode(mode), strategyID, domains)
 }
 
 // RequestPrivateMode switches to Private Mode. If Fast Mode is active, it is
@@ -185,6 +186,12 @@ func (a *App) SetReconnectOnLaunch(enabled bool) error {
 // FastModePresets returns the bundled preset domain groups keyed by name.
 func (a *App) FastModePresets() map[string][]string {
 	return a.sm.Fast().Presets()
+}
+
+// FastModeStrategies returns the bundled DPI-bypass strategy presets (the ISP-
+// aware "how" of Fast Mode) in the order the picker should render them.
+func (a *App) FastModeStrategies() []fastmode.StrategyInfo {
+	return a.sm.Fast().Strategies()
 }
 
 // GetCustomDomains returns the user's persisted custom domain list.

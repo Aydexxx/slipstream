@@ -27,7 +27,7 @@ func countFlag(args []string, prefix string) int {
 }
 
 func TestBuildArgsFullModeHasNoHostlist(t *testing.T) {
-	args := buildArgs("")
+	args := buildArgs(defaultStrategy(), "")
 	if !contains(args, "--wf-tcp=443") {
 		t.Error("expected --wf-tcp=443 for TLS ClientHello fragmentation")
 	}
@@ -47,7 +47,7 @@ func TestBuildArgsFullModeHasNoHostlist(t *testing.T) {
 
 func TestBuildArgsScopedModeHasHostlistInBothGroups(t *testing.T) {
 	path := `C:\data\hostlist.txt`
-	args := buildArgs(path)
+	args := buildArgs(defaultStrategy(), path)
 	if n := countFlag(args, "--hostlist="); n != 2 {
 		t.Errorf("scoped mode should apply the hostlist to both the TCP and UDP groups, got %d", n)
 	}

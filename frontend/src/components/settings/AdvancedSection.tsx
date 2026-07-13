@@ -2,6 +2,7 @@ import {useState} from 'react'
 import {ResetAndQuit, Uninstall} from '../../../wailsjs/go/app/App'
 import {normalizeError} from '../../lib/errors'
 import {Button} from '../ui/Button'
+import {ConfirmDialog} from '../ui/ConfirmDialog'
 
 // Reset & Quit and Uninstall both end the app; ResetAndQuit resolves after the
 // window closes (or not at all), so we don't await a result — we just fire it
@@ -46,45 +47,31 @@ export function AdvancedSection() {
                 </Button>
             </div>
 
-            <div className="flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                    <div>
-                        <p className="text-sm font-medium text-text">Uninstall Slipstream</p>
-                        <p className="text-xs text-text-secondary">
-                            Restores networking and permanently removes everything: settings, your imported config,
-                            engine files, the startup entry, shortcuts, and the app itself.
-                        </p>
-                    </div>
-                    {!confirmingUninstall && (
-                        <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => setConfirmingUninstall(true)}
-                            disabled={busy}
-                        >
-                            Uninstall
-                        </Button>
-                    )}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 p-3">
+                <div>
+                    <p className="text-sm font-medium text-text">Uninstall Slipstream</p>
+                    <p className="text-xs text-text-secondary">
+                        Restores networking and permanently removes everything: settings, your imported config, engine
+                        files, the startup entry, shortcuts, and the app itself.
+                    </p>
                 </div>
-
-                {confirmingUninstall && (
-                    <div className="flex items-center justify-between gap-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
-                        <p className="text-xs text-danger">
-                            This can't be undone. Slipstream will close and remove all its traces.
-                        </p>
-                        <div className="flex shrink-0 gap-2">
-                            <Button size="sm" variant="ghost" onClick={() => setConfirmingUninstall(false)} disabled={busy}>
-                                Cancel
-                            </Button>
-                            <Button size="sm" variant="danger" onClick={handleUninstall} loading={busy}>
-                                Remove everything
-                            </Button>
-                        </div>
-                    </div>
-                )}
+                <Button size="sm" variant="danger" onClick={() => setConfirmingUninstall(true)} disabled={busy}>
+                    Uninstall
+                </Button>
             </div>
 
             {error && <p className="text-xs text-danger">{error}</p>}
+
+            <ConfirmDialog
+                open={confirmingUninstall}
+                onOpenChange={setConfirmingUninstall}
+                tone="danger"
+                title="Uninstall Slipstream?"
+                description="This can't be undone. Slipstream will restore your networking, then permanently remove all of its files, settings, your imported config, and the app itself."
+                confirmLabel="Remove everything"
+                loading={busy}
+                onConfirm={handleUninstall}
+            />
         </div>
     )
 }

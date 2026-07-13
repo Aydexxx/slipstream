@@ -62,7 +62,7 @@ func (m *Manager) MaybeReconnectLastMode() {
 	var err error
 	switch s.LastMode {
 	case SubModeFast:
-		err = m.RequestFastMode(fastmode.Mode(s.LastFastSubMode), s.LastFastDomains)
+		err = m.RequestFastMode(fastmode.Mode(s.LastFastSubMode), s.LastFastStrategy, s.LastFastDomains)
 	case SubModePrivate:
 		err = m.RequestPrivateMode()
 	}

@@ -49,7 +49,7 @@ type fakeFast struct {
 	startGate chan struct{}
 }
 
-func (f *fakeFast) Start(mode fastmode.Mode, domains []string) error {
+func (f *fakeFast) Start(mode fastmode.Mode, strategyID string, domains []string) error {
 	f.log.add("fast:start")
 	f.mu.Lock()
 	gate := f.startGate
@@ -62,7 +62,9 @@ func (f *fakeFast) Start(mode fastmode.Mode, domains []string) error {
 		f.setStatus(fastmode.Status{State: fastmode.StateFailed, Error: err.Error()})
 		return err
 	}
-	f.setStatus(fastmode.Status{State: fastmode.StateRunning, Mode: mode, Domains: domains})
+	// Echo the requested strategy back in status, mirroring the real
+	// controller, so the manager persists what actually ran.
+	f.setStatus(fastmode.Status{State: fastmode.StateRunning, Mode: mode, Strategy: strategyID, Domains: domains})
 	return nil
 }
 
@@ -96,6 +98,7 @@ func (f *fakeFast) DNSBackupPending() bool {
 func (f *fakeFast) Shutdown() { f.log.add("fast:shutdown") }
 
 func (f *fakeFast) Presets() map[string][]string             { return nil }
+func (f *fakeFast) Strategies() []fastmode.StrategyInfo      { return nil }
 func (f *fakeFast) LoadCustomDomains() ([]string, error)     { return nil, nil }
 func (f *fakeFast) SaveCustomDomains(domains []string) error { return nil }
 
@@ -190,6 +193,40 @@ func (p *fakePrivate) setStatus(s privatemode.Status) {
 	}
 }
 
+// statusRecorder captures every unified Status the Manager emits, so tests
+// can assert on what the frontend would actually receive (in particular the
+// transitioning flag driving the mode buttons' pending/disabled state).
+type statusRecorder struct {
+	mu       sync.Mutex
+	statuses []Status
+}
+
+func (r *statusRecorder) emit(s Status) {
+	r.mu.Lock()
+	r.statuses = append(r.statuses, s)
+	r.mu.Unlock()
+}
+
+func (r *statusRecorder) last() (Status, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.statuses) == 0 {
+		return Status{}, false
+	}
+	return r.statuses[len(r.statuses)-1], true
+}
+
+func (r *statusRecorder) any(pred func(Status) bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, s := range r.statuses {
+		if pred(s) {
+			return true
+		}
+	}
+	return false
+}
+
 // harness bundles a Manager with its fakes for a test.
 type harness struct {
 	mgr     *Manager
@@ -217,7 +254,7 @@ func newHarness(t *testing.T) *harness {
 func TestSwitchFastToPrivateTearsDownFastFirstAndVerifies(t *testing.T) {
 	h := newHarness(t)
 
-	if err := h.mgr.RequestFastMode(fastmode.ModeFull, nil); err != nil {
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 	if got := h.mgr.Status(); got.State != StateFastActive || got.SubMode != SubModeFast {
@@ -240,7 +277,7 @@ func TestSwitchFastToPrivateTearsDownFastFirstAndVerifies(t *testing.T) {
 
 func TestTeardownErrorBlocksSwitchAndDoesNotStartTarget(t *testing.T) {
 	h := newHarness(t)
-	if err := h.mgr.RequestFastMode(fastmode.ModeFull, nil); err != nil {
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 	h.fast.mu.Lock()
@@ -263,7 +300,7 @@ func TestTeardownErrorBlocksSwitchAndDoesNotStartTarget(t *testing.T) {
 
 func TestVerifyCleanBlocksSwitchOnDirtyDNS(t *testing.T) {
 	h := newHarness(t)
-	if err := h.mgr.RequestFastMode(fastmode.ModeFull, nil); err != nil {
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 	// Stop() itself reports success, but the live DNS-pending signal says
@@ -294,7 +331,7 @@ func TestVerifyCleanBlocksSwitchOnArmedKillSwitch(t *testing.T) {
 	h.private.killSwitchArmed = true
 	h.private.mu.Unlock()
 
-	err := h.mgr.RequestFastMode(fastmode.ModeFull, nil)
+	err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil)
 	if err == nil || !strings.Contains(err.Error(), "kill switch") {
 		t.Fatalf("expected a kill-switch-armed teardown error, got %v", err)
 	}
@@ -302,6 +339,89 @@ func TestVerifyCleanBlocksSwitchOnArmedKillSwitch(t *testing.T) {
 		if e == "fast:start" {
 			t.Fatal("fast:start must not be called when the kill switch is still armed")
 		}
+	}
+}
+
+// TestRequestFastModeEmitsSettledStatus guards the BUG 1 regression: the final
+// status emitted once a transition finishes must carry transitioning=false.
+// The last emit inside RequestFastMode snapshots transitioning=true (the lock
+// is still held), so without endTransition's own emit the frontend would never
+// see it clear and the mode buttons would stay stuck in their loading state.
+func TestRequestFastModeEmitsSettledStatus(t *testing.T) {
+	h := newHarness(t)
+	rec := &statusRecorder{}
+	h.mgr.SetEmitter(rec.emit)
+
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
+		t.Fatalf("RequestFastMode: %v", err)
+	}
+
+	last, ok := rec.last()
+	if !ok {
+		t.Fatal("expected at least one emitted status")
+	}
+	if last.Transitioning {
+		t.Fatalf("final emitted status still transitioning=true: %+v", last)
+	}
+	if last.State != StateFastActive || last.SubMode != SubModeFast {
+		t.Fatalf("final emitted status not fast-active: %+v", last)
+	}
+}
+
+// TestRequestIdleStopsFastAndClearsPending is the end-to-end stop path behind
+// the "Turn Off" button: it must reach the controller's Stop, signal a pending
+// transition, and emit a settled idle status so the spinner clears.
+func TestRequestIdleStopsFastAndClearsPending(t *testing.T) {
+	h := newHarness(t)
+	rec := &statusRecorder{}
+	h.mgr.SetEmitter(rec.emit)
+
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
+		t.Fatalf("RequestFastMode: %v", err)
+	}
+	if err := h.mgr.RequestIdle(); err != nil {
+		t.Fatalf("RequestIdle: %v", err)
+	}
+
+	if indexOf(h.log.snapshot(), "fast:stop") == -1 {
+		t.Fatalf("RequestIdle never reached fast:stop, got %v", h.log.snapshot())
+	}
+	// A pending state was signalled (begin emits transitioning=true) so the UI
+	// can show progress for the whole round-trip...
+	if !rec.any(func(s Status) bool { return s.Transitioning }) {
+		t.Fatal("expected at least one emitted status with transitioning=true")
+	}
+	// ...and the final emit settles it so the pending UI resolves.
+	last, _ := rec.last()
+	if last.Transitioning || last.State != StateIdle || last.SubMode != SubModeNone {
+		t.Fatalf("final emitted status not settled-idle: %+v", last)
+	}
+	if got := h.mgr.Status(); got.State != StateIdle || got.SubMode != SubModeNone || got.Transitioning {
+		t.Fatalf("final Status not idle: %+v", got)
+	}
+}
+
+// TestRequestIdleWhenAlreadyIdleIsClean confirms turning off from a clean
+// idle state is a harmless no-op that still settles with transitioning=false.
+func TestRequestIdleWhenAlreadyIdleIsClean(t *testing.T) {
+	h := newHarness(t)
+	rec := &statusRecorder{}
+	h.mgr.SetEmitter(rec.emit)
+
+	if err := h.mgr.RequestIdle(); err != nil {
+		t.Fatalf("RequestIdle: %v", err)
+	}
+	for _, e := range h.log.snapshot() {
+		if e == "fast:stop" || e == "private:disconnect" {
+			t.Fatalf("no teardown should run when already idle, got %v", h.log.snapshot())
+		}
+	}
+	last, ok := rec.last()
+	if !ok {
+		t.Fatal("expected at least one emitted status")
+	}
+	if last.Transitioning || last.State != StateIdle || last.SubMode != SubModeNone {
+		t.Fatalf("final emitted status not settled-idle: %+v", last)
 	}
 }
 
@@ -314,7 +434,7 @@ func TestConcurrentRequestsSerialize(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- h.mgr.RequestFastMode(fastmode.ModeFull, nil)
+		errCh <- h.mgr.RequestFastMode(fastmode.ModeFull, "", nil)
 	}()
 
 	// Give the first call time to claim the transition lock and block inside
@@ -374,7 +494,7 @@ func TestSettingsPersistAcrossManagerInstances(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if err := mgr1.RequestFastMode(fastmode.ModeDiscord, []string{"example.com"}); err != nil {
+	if err := mgr1.RequestFastMode(fastmode.ModeDiscord, "", []string{"example.com"}); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 	if err := mgr1.SetReconnectOnLaunch(true); err != nil {
@@ -401,7 +521,7 @@ func TestSettingsPersistAcrossManagerInstances(t *testing.T) {
 
 func TestShutdownCalledTwiceOnlyTearsDownOnce(t *testing.T) {
 	h := newHarness(t)
-	if err := h.mgr.RequestFastMode(fastmode.ModeFull, nil); err != nil {
+	if err := h.mgr.RequestFastMode(fastmode.ModeFull, "", nil); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
 
@@ -422,9 +542,12 @@ func TestShutdownCalledTwiceOnlyTearsDownOnce(t *testing.T) {
 
 func TestLastFastSelectionDefaultsToFull(t *testing.T) {
 	h := newHarness(t)
-	mode, domains := h.mgr.LastFastSelection()
+	mode, strategy, domains := h.mgr.LastFastSelection()
 	if mode != fastmode.ModeFull {
 		t.Errorf("expected default mode ModeFull, got %q", mode)
+	}
+	if strategy != "" {
+		t.Errorf("expected empty strategy by default (resolved downstream), got %q", strategy)
 	}
 	if len(domains) != 0 {
 		t.Errorf("expected no domains by default, got %v", domains)
@@ -433,12 +556,15 @@ func TestLastFastSelectionDefaultsToFull(t *testing.T) {
 
 func TestLastFastSelectionReflectsMostRecentStart(t *testing.T) {
 	h := newHarness(t)
-	if err := h.mgr.RequestFastMode(fastmode.ModeDiscord, []string{"example.com"}); err != nil {
+	if err := h.mgr.RequestFastMode(fastmode.ModeDiscord, "vodafone", []string{"example.com"}); err != nil {
 		t.Fatalf("RequestFastMode: %v", err)
 	}
-	mode, domains := h.mgr.LastFastSelection()
+	mode, strategy, domains := h.mgr.LastFastSelection()
 	if mode != fastmode.ModeDiscord {
 		t.Errorf("expected ModeDiscord, got %q", mode)
+	}
+	if strategy != "vodafone" {
+		t.Errorf("expected strategy vodafone, got %q", strategy)
 	}
 	if len(domains) != 1 || domains[0] != "example.com" {
 		t.Errorf("expected [example.com], got %v", domains)

@@ -14,6 +14,10 @@ export function FastModePresets() {
   return window['go']['app']['App']['FastModePresets']();
 }
 
+export function FastModeStrategies() {
+  return window['go']['app']['App']['FastModeStrategies']();
+}
+
 export function GetAutoStartEnabled() {
   return window['go']['app']['App']['GetAutoStartEnabled']();
 }
@@ -58,8 +62,8 @@ export function Ready() {
   return window['go']['app']['App']['Ready']();
 }
 
-export function RequestFastMode(arg1, arg2) {
-  return window['go']['app']['App']['RequestFastMode'](arg1, arg2);
+export function RequestFastMode(arg1, arg2, arg3) {
+  return window['go']['app']['App']['RequestFastMode'](arg1, arg2, arg3);
 }
 
 export function RequestIdle() {

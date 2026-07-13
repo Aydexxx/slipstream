@@ -61,7 +61,7 @@ func main() {
 	printDNS("BEFORE")
 
 	fmt.Println("\nStarting Fast Mode (Full)...")
-	if err := c.Start(fastmode.ModeFull, nil); err != nil {
+	if err := c.Start(fastmode.ModeFull, "", nil); err != nil {
 		fatal("Start", err)
 	}
 	fmt.Println("Fast Mode started. Waiting 5s for DNS to settle...")

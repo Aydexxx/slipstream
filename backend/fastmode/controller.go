@@ -48,6 +48,7 @@ const (
 type Status struct {
 	State    State     `json:"state"`
 	Mode     Mode      `json:"mode"`
+	Strategy string    `json:"strategy"`
 	Domains  []string  `json:"domains"`
 	PID      int       `json:"pid"`
 	Restarts int       `json:"restarts"`
@@ -93,6 +94,7 @@ type Controller struct {
 	transitioning bool // a Start or Stop is in flight; reject re-entry
 	state         State
 	mode          Mode
+	strategy      string // ID of the desync strategy the current launch uses
 	domains       []string
 	restarts      int
 	fastFails     int
@@ -181,6 +183,9 @@ func (c *Controller) SaveCustomDomains(domains []string) error {
 // Presets exposes the bundled preset groups to the frontend.
 func (c *Controller) Presets() map[string][]string { return Presets() }
 
+// Strategies exposes the bundled DPI-bypass strategy presets to the frontend.
+func (c *Controller) Strategies() []StrategyInfo { return Strategies() }
+
 // DNSBackupPending reports whether a DNS backup is still on disk, i.e. a
 // restore to the user's original DNS is still owed. It is a live signal —
 // unlike Status().DNS, which is best-effort and reset regardless of whether
@@ -207,6 +212,7 @@ func (c *Controller) snapshotLocked() Status {
 	return Status{
 		State:    c.state,
 		Mode:     c.mode,
+		Strategy: c.strategy,
 		Domains:  ds,
 		PID:      pid,
 		Restarts: c.restarts,
@@ -228,17 +234,24 @@ func (c *Controller) emitStatus() {
 	}
 }
 
-// Start turns Fast Mode on for the given sub-mode. For ModeCustom, domains is
-// the resolved list of hosts to de-censor; it is ignored for Full and
-// Discord. Start is idempotent-safe against concurrent callers and refuses to
-// run without Administrator or with a failed engine-integrity check.
-func (c *Controller) Start(mode Mode, domains []string) error {
+// Start turns Fast Mode on for the given sub-mode using the named desync
+// strategy (see strategies.go). strategyID may be "" or an unknown value, in
+// which case the default strategy is used. For ModeCustom, domains is the
+// resolved list of hosts to de-censor; it is ignored for Full and Discord.
+// Start is idempotent-safe against concurrent callers and refuses to run
+// without Administrator or with a failed engine-integrity check.
+func (c *Controller) Start(mode Mode, strategyID string, domains []string) error {
 	if !validMode(mode) {
 		return fmt.Errorf("unknown Fast Mode sub-mode %q", mode)
 	}
 	if !isElevated() {
 		return fmt.Errorf("Fast Mode needs Administrator. Restart Slipstream and approve the User Account Control prompt")
 	}
+
+	// Resolve the strategy up front so the persisted ID we surface in Status is
+	// the one actually in effect (defaulting a stale/empty ID rather than
+	// echoing it back).
+	strat := resolveStrategy(strategyID)
 
 	// Claim the transition so a second Start/Stop can't race us.
 	c.mu.Lock()
@@ -253,13 +266,14 @@ func (c *Controller) Start(mode Mode, domains []string) error {
 	c.transitioning = true
 	c.state = StateStarting
 	c.mode = mode
+	c.strategy = strat.ID
 	c.restarts = 0
 	c.fastFails = 0
 	c.lastErr = ""
 	c.mu.Unlock()
 	c.emitStatus()
 
-	if err := c.startLocked(mode, domains); err != nil {
+	if err := c.startLocked(mode, strat, domains); err != nil {
 		// startLocked already rolled back (DNS/process) on failure.
 		c.mu.Lock()
 		c.state = StateFailed
@@ -280,7 +294,7 @@ func (c *Controller) Start(mode Mode, domains []string) error {
 // startLocked does the heavy lifting outside the mutex (verify, hostlist,
 // launch, DNS). It is only ever called with transitioning=true held, which
 // serializes it against other Start/Stop calls.
-func (c *Controller) startLocked(mode Mode, domains []string) error {
+func (c *Controller) startLocked(mode Mode, strat Strategy, domains []string) error {
 	// 1. Refuse to run tampered/missing binaries.
 	if err := c.engine.Verify(engine.ModeFast); err != nil {
 		return err
@@ -315,7 +329,7 @@ func (c *Controller) startLocked(mode Mode, domains []string) error {
 	// 3. Prepare the command line and process working directory.
 	c.winwsPath = c.engine.WinwsPath()
 	c.winwsDir = c.engine.Dir(engine.ModeFast)
-	c.winwsArgs = buildArgs(hostlistPath)
+	c.winwsArgs = buildArgs(strat, hostlistPath)
 
 	// 4. Launch winws and give the driver a moment to load; a crash-on-start
 	//    (e.g. WinDivert refused) surfaces here *before* we touch DNS.
@@ -356,7 +370,7 @@ func (c *Controller) startLocked(mode Mode, domains []string) error {
 	c.since = time.Now()
 	c.mu.Unlock()
 	if c.log != nil {
-		c.log.Info("fast mode started", "mode", string(mode), "pid", p.cmd.Process.Pid, "domains", len(c.domains))
+		c.log.Info("fast mode started", "mode", string(mode), "strategy", strat.ID, "pid", p.cmd.Process.Pid, "domains", len(c.domains))
 	}
 	return nil
 }
@@ -482,6 +496,9 @@ func (c *Controller) supervise(p *proc) {
 // call when already stopped (no-op) and always attempts the DNS restore even
 // if killing the process fails.
 func (c *Controller) Stop() error {
+	if c.log != nil {
+		c.log.Info("fast mode stop requested")
+	}
 	c.mu.Lock()
 	if c.state == StateStopped {
 		c.mu.Unlock()

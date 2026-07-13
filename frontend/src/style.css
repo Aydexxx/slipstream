@@ -22,20 +22,31 @@
 	--color-warning: var(--warning);
 	--color-danger: var(--danger);
 
+	--color-brand-1: var(--brand-1);
+	--color-brand-2: var(--brand-2);
+
 	--font-display: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
 	--font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 
 	--radius-sm: 6px;
 	--radius-md: 10px;
 	--radius-lg: 16px;
+	--radius-xl: 22px;
 
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
 	--shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+	--shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.22);
 
 	--animate-fade-in: fade-in 150ms ease-out;
 	--animate-scale-in: scale-in 150ms ease-out;
 	--animate-slide-in: slide-in 200ms ease-out;
+	--animate-slide-up: slide-up 180ms ease-out;
 	--animate-pulse-soft: pulse-soft 2s ease-in-out infinite;
+	/* Ambient status motion (looping, not UI transitions): a slow rotating arc
+	   for connecting/starting, and a breathing glow for active states. Both are
+	   disabled under prefers-reduced-motion below. */
+	--animate-ring-spin: ring-spin 1.4s linear infinite;
+	--animate-breathe: breathe 3s ease-in-out infinite;
 }
 
 :root {
@@ -53,6 +64,11 @@
 	--success: #16a34a;
 	--warning: #d97706;
 	--danger: #dc2626;
+	/* Brand gradient stops — a tight sweep off the single accent, used only by
+	   the Slipstream mark and the status hub's glow. The UI still has one
+	   accent; these never appear as interactive-element fills. */
+	--brand-1: #7c6ff2;
+	--brand-2: #5646d6;
 }
 
 .dark {
@@ -70,6 +86,8 @@
 	--success: #22c55e;
 	--warning: #f59e0b;
 	--danger: #ef4444;
+	--brand-1: #9c8ffa;
+	--brand-2: #6d5ef0;
 }
 
 @keyframes fade-in {
@@ -103,6 +121,17 @@
 	}
 }
 
+@keyframes slide-up {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
 @keyframes pulse-soft {
 	0%,
 	100% {
@@ -110,6 +139,27 @@
 	}
 	50% {
 		opacity: 0.45;
+	}
+}
+
+@keyframes ring-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes breathe {
+	0%,
+	100% {
+		opacity: 0.35;
+		transform: scale(0.96);
+	}
+	50% {
+		opacity: 0.6;
+		transform: scale(1.04);
 	}
 }
 
@@ -133,4 +183,16 @@ body {
 	transition-property: background-color, border-color, color, box-shadow, opacity, transform;
 	transition-duration: 150ms;
 	transition-timing-function: ease;
+}
+
+/* Respect users who ask for less motion: silence the ambient status loops and
+   collapse UI transitions to near-instant. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
 }

@@ -103,12 +103,12 @@ func (m *Manager) Fast() FastController { return m.fast }
 // operations (import/summary/delete) that aren't mode transitions.
 func (m *Manager) Private() PrivateController { return m.private }
 
-// LastFastSelection returns the Fast Mode sub-mode/domains last used
+// LastFastSelection returns the Fast Mode sub-mode/strategy/domains last used
 // successfully — the same values MaybeReconnectLastMode resumes with.
-// Defaults to ModeFull with no domains if Fast Mode has never been started.
-// Used by one-click callers (the tray menu) that don't have a config UI of
-// their own to ask the user for a sub-mode.
-func (m *Manager) LastFastSelection() (fastmode.Mode, []string) {
+// Defaults to ModeFull, the default strategy, and no domains if Fast Mode has
+// never been started. Used by one-click callers (the tray menu) that don't
+// have a config UI of their own to ask the user for a sub-mode.
+func (m *Manager) LastFastSelection() (fastmode.Mode, string, []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	mode := fastmode.Mode(m.settings.LastFastSubMode)
@@ -117,7 +117,8 @@ func (m *Manager) LastFastSelection() (fastmode.Mode, []string) {
 	}
 	domains := make([]string, len(m.settings.LastFastDomains))
 	copy(domains, m.settings.LastFastDomains)
-	return mode, domains
+	// An empty strategy is fine: Fast Mode's Start resolves it to the default.
+	return mode, m.settings.LastFastStrategy, domains
 }
 
 // Status returns a snapshot of the unified state.
@@ -141,6 +142,7 @@ func (m *Manager) snapshotLocked() Status {
 		PrivateStatus:     &ps,
 		KillSwitchArmed:   m.private.KillSwitchArmed(),
 		ReconnectOnLaunch: m.settings.ReconnectOnLaunch,
+		LastFastStrategy:  m.settings.LastFastStrategy,
 	}
 }
 
@@ -158,21 +160,31 @@ func (m *Manager) emitStatus() {
 
 // beginTransition claims the top-level transition lock so concurrent
 // Request* calls can't race each other. It mirrors the transitioning guard
-// each underlying controller already has, one level up.
+// each underlying controller already has, one level up. It emits the new
+// transitioning=true status so the UI can show a pending state for the whole
+// round-trip (not just the local action call).
 func (m *Manager) beginTransition() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.transitioning {
+		m.mu.Unlock()
 		return fmt.Errorf("Still changing mode; try again in a moment")
 	}
 	m.transitioning = true
+	m.mu.Unlock()
+	m.emitStatus()
 	return nil
 }
 
+// endTransition clears the transition lock and — crucially — emits the
+// settled status. Without this final emit the last status the frontend ever
+// saw would still carry transitioning=true (every emit during the transition
+// snapshots it as true), leaving mode buttons stuck in their loading/disabled
+// state forever. Emitted outside the lock since emitStatus takes m.mu itself.
 func (m *Manager) endTransition() {
 	m.mu.Lock()
 	m.transitioning = false
 	m.mu.Unlock()
+	m.emitStatus()
 }
 
 // fail records a transition failure as StateError and emits it.
@@ -188,9 +200,12 @@ func (m *Manager) fail(err error) {
 	m.emitStatus()
 }
 
-// RequestFastMode switches to Fast Mode, first fully tearing down and
-// verifying Private Mode if it was active.
-func (m *Manager) RequestFastMode(mode fastmode.Mode, domains []string) error {
+// RequestFastMode switches to Fast Mode using the named desync strategy (the
+// "how"; see fastmode/strategies.go) against the given target sub-mode (the
+// "what"). It first fully tears down and verifies Private Mode if it was
+// active. strategyID may be "" or unknown — Fast Mode resolves it to the
+// default.
+func (m *Manager) RequestFastMode(mode fastmode.Mode, strategyID string, domains []string) error {
 	if err := m.beginTransition(); err != nil {
 		return err
 	}
@@ -210,7 +225,7 @@ func (m *Manager) RequestFastMode(mode fastmode.Mode, domains []string) error {
 	m.state = StateFastActive
 	m.mu.Unlock()
 
-	if err := m.fast.Start(mode, domains); err != nil {
+	if err := m.fast.Start(mode, strategyID, domains); err != nil {
 		m.fail(err)
 		return err
 	}
@@ -220,6 +235,14 @@ func (m *Manager) RequestFastMode(mode fastmode.Mode, domains []string) error {
 	m.since = time.Now()
 	m.settings.LastMode = SubModeFast
 	m.settings.LastFastSubMode = string(mode)
+	// Persist the strategy that actually ran, so the picker preselects it and
+	// reconnect-on-launch resumes with it. The controller has resolved any
+	// empty/stale ID by now; read it back from its status.
+	if s := m.fast.Status().Strategy; s != "" {
+		m.settings.LastFastStrategy = s
+	} else {
+		m.settings.LastFastStrategy = strategyID
+	}
 	m.settings.LastFastDomains = domains
 	settingsToSave := m.settings
 	m.mu.Unlock()
@@ -267,6 +290,9 @@ func (m *Manager) RequestPrivateMode() error {
 
 // RequestIdle tears down whichever mode is active and verifies clean state.
 func (m *Manager) RequestIdle() error {
+	if m.log != nil {
+		m.log.Info("request idle (stop) received")
+	}
 	if err := m.beginTransition(); err != nil {
 		return err
 	}

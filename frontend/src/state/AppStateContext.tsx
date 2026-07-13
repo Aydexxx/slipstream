@@ -23,7 +23,7 @@ export interface AppStateValue {
     status: statemachine.Status | null
     action: ActionState
     clearActionError: () => void
-    requestFastMode: (mode: FastMode, domains: string[]) => Promise<void>
+    requestFastMode: (mode: FastMode, strategyId: string, domains: string[]) => Promise<void>
     requestPrivateMode: () => Promise<void>
     requestIdle: () => Promise<void>
     disarmKillSwitch: () => Promise<void>
@@ -81,7 +81,8 @@ export function AppStateProvider({children}: {children: ReactNode}) {
     }, [clearActionError])
 
     const requestFastMode = useCallback(
-        (mode: FastMode, domains: string[]) => runAction(() => RequestFastMode(mode, domains)),
+        (mode: FastMode, strategyId: string, domains: string[]) =>
+            runAction(() => RequestFastMode(mode, strategyId, domains)),
         [runAction],
     )
     const requestPrivateMode = useCallback(() => runAction(() => RequestPrivateMode()), [runAction])

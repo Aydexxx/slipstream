@@ -16,6 +16,7 @@ import (
 
 	"slipstream/backend/app"
 	"slipstream/backend/cleanup"
+	"slipstream/backend/comsta"
 	"slipstream/backend/elevate"
 	"slipstream/backend/engine"
 	"slipstream/backend/fastmode"
@@ -199,6 +200,20 @@ func main() {
 	// per call site), so wails.Run moves to a goroutine to leave the
 	// original goroutine free for the tray below.
 	go func() {
+		// WebView2's environment must be created on a COM STA thread.
+		// go-webview2 only sets that up on the process's main OS thread, which
+		// we've handed to the tray (getlantern/systray pins the original
+		// goroutine), so this goroutine — the one that actually drives
+		// wails.Run and embeds the WebView2 — needs its own apartment. Without
+		// it, environment creation fails with "CoInitialize has not been
+		// called" and the window never appears. See package comsta.
+		uninitCOM, comErr := comsta.Init()
+		if comErr != nil {
+			logger.Error("failed to init COM apartment for WebView2; window may not appear", "error", comErr)
+		} else {
+			defer uninitCOM()
+		}
+
 		err := wails.Run(&options.App{
 			Title:  appName,
 			Width:  1024,
